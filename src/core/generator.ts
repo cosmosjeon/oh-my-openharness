@@ -8,7 +8,8 @@ import type {
   GraphNode,
   HarnessProject,
   LayoutNode,
-  SkillFile
+  SkillFile,
+  TraceEvent
 } from './types';
 
 function hasAny(text: string, terms: string[]): boolean {
@@ -29,10 +30,28 @@ function createSkill(prompt: string, name: string, warnings: string[]): SkillFil
   };
 }
 
+function createCustomBlocks(normalized: string): CustomBlockDefinition[] {
+  if (!hasAny(normalized, ['custom', 'novel', 'opaque', '새로운', '신규', 'runtime'])) {
+    return [];
+  }
+  return [
+    {
+      id: 'custom-runtime-1',
+      label: 'Novel Runtime Block',
+      description: 'Opaque runtime generation block for novel hook/runtime logic',
+      opaque: true,
+      ports: [
+        { id: 'intent-in', label: 'Intent', direction: 'input' },
+        { id: 'runtime-out', label: 'Runtime', direction: 'output' }
+      ]
+    }
+  ];
+}
+
 function detectConfirmationRequests(normalized: string): ConfirmationRequest[] {
   const requests: ConfirmationRequest[] = [];
 
-  if (hasAny(normalized, ['sudo', 'full access', 'all permissions', 'network access', 'filesystem access', 'shell access'])) {
+  if (hasAny(normalized, ['sudo', 'full access', 'all permissions', 'network access', 'filesystem access', 'shell access', 'permission', 'approve', 'approval', '권한', '승인'])) {
     requests.push({
       id: 'confirm-risk-permissions',
       kind: 'risk-bearing-permission',
@@ -52,7 +71,7 @@ function detectConfirmationRequests(normalized: string): ConfirmationRequest[] {
     });
   }
 
-  if (hasAny(normalized, ['delete files', 'rm -rf', 'drop database', 'destroy data', 'wipe workspace'])) {
+  if (hasAny(normalized, ['delete', 'destroy', 'reset', 'drop', 'rm -rf', 'wipe workspace', '파괴', '삭제'])) {
     requests.push({
       id: 'confirm-destructive-runtime',
       kind: 'destructive-runtime',
@@ -73,41 +92,25 @@ function createAuthoringDecision(
 ): AuthoringDecision {
   const warnings = [
     'Layout is stored separately from semantic graph data.',
-    'Generated harness targets Claude Code for Phase 0 only.',
+    'Generated harness targets Claude Code for Phase 0 first.',
     ...confirmationRequests.map((request) => request.message),
     ...(customBlocks.length > 0 ? ['Custom blocks are opaque and must be traced at runtime.'] : [])
   ];
 
-  const traceIntent = ['hook-activation', 'branch-selection', 'state-transition'];
+  const traceIntent: TraceEvent['eventType'][] = ['hook-activation', 'state-transition'];
+  if (nodes.some((node) => node.kind === 'Permission')) traceIntent.push('branch-selection');
   if (nodes.some((node) => node.kind === 'Loop')) traceIntent.push('loop-iteration');
   if (customBlocks.length > 0) traceIntent.push('custom-block');
+  if (nodes.some((node) => node.kind === 'MCPServer')) traceIntent.push('mcp-server');
+  traceIntent.push('failure');
 
   return {
     summary: `Generate a Claude Code-native harness project for: ${prompt}`,
     warnings,
     confirmationRequests,
-    compatibleRuntimes: ['claude-code'],
+    compatibleRuntimes: ['claude-code', 'opencode', 'codex'],
     traceIntent
   };
-}
-
-function createCustomBlockDefinitions(normalized: string): CustomBlockDefinition[] {
-  if (!hasAny(normalized, ['custom', 'novel', 'opaque', '새로운', '신규'])) {
-    return [];
-  }
-
-  return [
-    {
-      id: 'custom-block-main',
-      label: 'Novel Runtime Block',
-      description: 'Opaque AI-generated runtime logic that participates in compile and trace flows.',
-      opaque: true,
-      ports: [
-        { id: 'in', label: 'In', direction: 'input' },
-        { id: 'out', label: 'Out', direction: 'output' }
-      ]
-    }
-  ];
 }
 
 function createCompositeInstances(nodes: GraphNode[], customBlocks: CustomBlockDefinition[]): CompositeInstance[] {
@@ -125,6 +128,9 @@ function createCompositeInstances(nodes: GraphNode[], customBlocks: CustomBlockD
     });
   };
 
+  if (nodeIds.has('session-start') && nodeIds.has('system-prompt') && nodeIds.has('state-write')) {
+    addComposite('session-init-bundle', 'Session Init Bundle', ['session-start', 'system-prompt', 'state-write']);
+  }
   if (nodeIds.has('permission-gate')) {
     addComposite('permission-gate', 'Permission Gate', ['permission-gate', 'main-skill', 'state-write']);
   }
@@ -132,16 +138,13 @@ function createCompositeInstances(nodes: GraphNode[], customBlocks: CustomBlockD
     addComposite('review-loop', 'Review Loop', ['main-skill', 'review-loop', 'state-write']);
     addComposite('ralph-loop', 'Ralph Loop', ['review-loop', 'state-write', 'post-tool-use']);
   }
-  if (nodeIds.has('session-start') && nodeIds.has('system-prompt')) {
-    addComposite('session-init-bundle', 'Session Init Bundle', ['session-start', 'system-prompt', 'state-write']);
-  }
   if (nodeIds.has('mcp-server')) {
     addComposite('mcp-registration', '3-Tier MCP Registration', ['permission-gate', 'mcp-server', 'post-tool-use']);
   }
   if (nodeIds.has('state-write')) {
     addComposite('lore-memory-persist', 'Lore/Memory Persist', ['main-skill', 'state-write', 'post-tool-use']);
   }
-  if (customBlocks.length > 0) {
+  if (customBlocks.length > 0 && nodeIds.has('custom-block')) {
     addComposite('evolutionary-seed', 'Evolutionary Seed', ['custom-block', 'main-skill', 'post-tool-use']);
   }
 
@@ -167,120 +170,53 @@ function pushNode(nodes: GraphNode[], kind: GraphNode['kind'], label: string, co
   return id;
 }
 
-function attach(nodes: GraphNode[], edges: GraphEdge[], from: string, to: string, label?: string) {
+function attach(edges: GraphEdge[], from: string, to: string, label?: string) {
   edges.push({ id: `edge-${edges.length + 1}`, from, to, label });
-}
-
-function createConfirmationRequests(normalized: string): ConfirmationRequest[] {
-  const requests: ConfirmationRequest[] = [];
-  if (hasAny(normalized, ['permission', 'approve', 'approval', '권한', '승인'])) {
-    requests.push({
-      id: 'confirm-permission-gate',
-      kind: 'risk-bearing-permission',
-      reason: 'Prompt implies a risky permission or approval boundary.',
-      message: 'Confirm the permission or approval policy before emitting the final runtime package.',
-      confirmed: false
-    });
-  }
-  if (hasAny(normalized, ['delete', 'destroy', 'reset', 'drop', '파괴', '삭제'])) {
-    requests.push({
-      id: 'confirm-destructive-runtime',
-      kind: 'destructive-runtime',
-      reason: 'Prompt implies destructive runtime behavior.',
-      message: 'Confirm destructive runtime behavior before compiling runnable hooks.',
-      confirmed: false
-    });
-  }
-  return requests;
-}
-
-function selectCompositeInstances(nodes: GraphNode[], normalized: string): CompositeInstance[] {
-  const wanted = new Set<string>(['session-init-bundle']);
-  if (hasAny(normalized, ['approval', 'approve', 'permission', '권한', '승인'])) wanted.add('permission-gate');
-  if (hasAny(normalized, ['retry', 'loop', 'review', '검토', '반복'])) wanted.add('review-loop');
-  if (hasAny(normalized, ['mcp', 'server', 'tool', '도구', '서버'])) wanted.add('mcp-registration');
-  if (hasAny(normalized, ['memory', 'state', '상태', '기억'])) wanted.add('lore-memory-persist');
-  if (hasAny(normalized, ['custom', 'novel', 'opaque', '새로운', '신규'])) wanted.add('evolutionary-seed');
-
-  return COMPOSITE_PATTERNS.filter((pattern) => wanted.has(pattern.id)).map((pattern, index) => ({
-    id: `composite-${index + 1}`,
-    patternId: pattern.id,
-    label: pattern.name,
-    expandedNodeIds: nodes.filter((node) => pattern.includes.includes(node.kind)).map((node) => node.id)
-  }));
-}
-
-function createCustomBlocks(normalized: string): CustomBlockDefinition[] {
-  if (!hasAny(normalized, ['custom', 'novel', 'opaque', '새로운', '신규', 'runtime'])) {
-    return [];
-  }
-  return [
-    {
-      id: 'custom-runtime-1',
-      label: 'Novel Runtime Block',
-      description: 'Opaque runtime generation block for novel hook/runtime logic',
-      opaque: true,
-      ports: [
-        { id: 'intent-in', label: 'Intent', direction: 'input' },
-        { id: 'runtime-out', label: 'Runtime', direction: 'output' }
-      ]
-    }
-  ];
-}
-
-function createAuthoringDecision(prompt: string, normalized: string, confirmationRequests: ConfirmationRequest[]): AuthoringDecision {
-  const warnings: string[] = [];
-  if (confirmationRequests.length > 0) warnings.push('Risk-sensitive operations require confirmation before final export.');
-  if (hasAny(normalized, ['novel', 'new runtime', '새로운', '신규'])) warnings.push('Novel runtime generation should be validated against representative E2E scenarios.');
-
-  const traceIntent: TraceEvent['eventType'][] = ['hook-activation', 'state-transition'];
-  if (hasAny(normalized, ['review', 'loop', 'retry', '검토', '반복'])) traceIntent.push('loop-iteration');
-  if (hasAny(normalized, ['condition', 'branch', 'if', '분기'])) traceIntent.push('branch-selection');
-  if (hasAny(normalized, ['custom', 'opaque', 'novel', '새로운'])) traceIntent.push('custom-block');
-  if (hasAny(normalized, ['mcp', 'server'])) traceIntent.push('mcp-server');
-  traceIntent.push('failure');
-
-  return {
-    summary: `Generate a Claude Code harness for: ${prompt}`,
-    warnings,
-    confirmationRequests,
-    compatibleRuntimes: ['claude-code', 'opencode', 'codex'],
-    traceIntent
-  };
 }
 
 export function generateHarnessProject(name: string, prompt: string): HarnessProject {
   const normalized = prompt.toLowerCase();
-  const customBlocks = createCustomBlockDefinitions(normalized);
+  const customBlocks = createCustomBlocks(normalized);
   const confirmationRequests = detectConfirmationRequests(normalized);
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
 
-  const nodes: GraphNode[] = [
-    { id: 'session-start', kind: 'SessionStart', label: 'Session Start' },
-    { id: 'system-prompt', kind: 'SystemPrompt', label: 'System Prompt Guardrails' },
-    { id: 'user-submit', kind: 'UserPromptSubmit', label: 'User Prompt Submit' },
-    { id: 'sequence-main', kind: 'Sequence', label: 'Primary Flow' },
-    { id: 'pre-tool-use', kind: 'PreToolUse', label: 'Pre Tool Use' },
-    { id: 'main-skill', kind: 'Skill', label: 'Generate Harness Skeleton', config: { skillId: 'skill-main' } }
-  ];
+  const sessionStart = pushNode(nodes, 'SessionStart', 'Session Start');
+  pushNode(nodes, 'SystemPrompt', 'System Prompt Guardrails');
+  const userSubmit = pushNode(nodes, 'UserPromptSubmit', 'User Prompt Submit');
+  const sequence = pushNode(nodes, 'Sequence', 'Primary Flow');
+  pushNode(nodes, 'PreToolUse', 'Pre Tool Use');
+  const mainSkill = 'main-skill';
+  nodes.push({ id: mainSkill, kind: 'Skill', label: 'Generate Harness Skeleton', config: { skillId: 'skill-main' } });
+
+  attach(edges, sessionStart, userSubmit);
+  attach(edges, userSubmit, mainSkill);
+  attach(edges, mainSkill, sequence);
 
   if (hasAny(normalized, ['approval', 'approve', 'permission', '권한', '승인'])) {
-    const permissionId = pushNode(nodes, 'Permission', 'Permission Gate');
-    attach(nodes, edges, mainSkill, permissionId, 'requires-review');
-    attach(nodes, edges, permissionId, sequence, 'approved');
+    const permissionId = 'permission-gate';
+    nodes.push({ id: permissionId, kind: 'Permission', label: 'Permission Gate' });
+    attach(edges, mainSkill, permissionId, 'requires-review');
+    attach(edges, permissionId, sequence, 'approved');
   }
+
   if (hasAny(normalized, ['mcp', 'server', 'tool', '도구', '서버'])) {
-    const mcpId = pushNode(nodes, 'MCPServer', 'MCP Server Registration');
-    attach(nodes, edges, sequence, mcpId, 'register-mcp');
-    attach(nodes, edges, mcpId, stop, 'ready');
+    const mcpId = 'mcp-server';
+    nodes.push({ id: mcpId, kind: 'MCPServer', label: 'MCP Server Registration' });
+    attach(edges, sequence, mcpId, 'register-mcp');
   }
+
   if (hasAny(normalized, ['retry', 'loop', 'review', '검토', '반복'])) {
-    const loopId = pushNode(nodes, 'Loop', 'Review Loop');
-    attach(nodes, edges, sequence, loopId, 'review');
-    attach(nodes, edges, loopId, sequence, 'retry');
+    const loopId = 'review-loop';
+    nodes.push({ id: loopId, kind: 'Loop', label: 'Review Loop' });
+    attach(edges, sequence, loopId, 'review');
+    attach(edges, loopId, sequence, 'retry');
   }
+
   if (hasAny(normalized, ['state', 'memory', '기억', '상태'])) {
     nodes.push({ id: 'state-read', kind: 'StateRead', label: 'Read Existing State' });
   }
+
   if (customBlocks.length > 0) {
     nodes.push({
       id: 'custom-block',
@@ -288,19 +224,17 @@ export function generateHarnessProject(name: string, prompt: string): HarnessPro
       label: 'Novel Runtime Block',
       config: { customBlockId: customBlocks[0].id }
     });
+    attach(edges, mainSkill, 'custom-block', 'extend-runtime');
+    attach(edges, 'custom-block', sequence, 'runtime-generated');
   }
 
-  nodes.push(
-    { id: 'state-write', kind: 'StateWrite', label: 'Persist State' },
-    { id: 'post-tool-use', kind: 'PostToolUse', label: 'Post Tool Use' },
-    { id: 'stop', kind: 'Stop', label: 'Stop' }
-  );
+  nodes.push({ id: 'state-write', kind: 'StateWrite', label: 'Persist State' });
+  nodes.push({ id: 'post-tool-use', kind: 'PostToolUse', label: 'Post Tool Use' });
+  nodes.push({ id: 'stop', kind: 'Stop', label: 'Stop' });
 
-  const edges: GraphEdge[] = [];
-  const order = nodes.map((node) => node.id);
-  for (let index = 0; index < order.length - 1; index += 1) {
-    edges.push({ id: `edge-${index}`, from: order[index], to: order[index + 1] });
-  }
+  attach(edges, sequence, 'state-write', 'persist-state');
+  attach(edges, 'state-write', 'post-tool-use', 'state-ready');
+  attach(edges, 'post-tool-use', 'stop', 'complete');
 
   const layout: LayoutNode[] = nodes.map((node, index) => ({
     id: node.id,

@@ -8,91 +8,48 @@ import { loadHarnessProject, writeHarnessProject } from './core/project';
 import { compileClaude } from './compiler/claude';
 import { validateProject } from './sandbox/validate';
 
-type ParsedArgs = {
-  command?: string;
-  flags: Map<string, string>;
-  booleans: Set<string>;
-};
+type ParsedArgs = { command?: string; flags: Map<string, string>; booleans: Set<string> };
 
 function usage() {
-  console.log(`harness-editor <command> [options]
-
-Commands:
-  chat [--name <name>] [--dir <dir>]
-  new --name <name> --prompt <prompt> [--dir <dir>] [--confirm-risk]
-  compile --project <dir> [--out <dir>]
-  sandbox --project <dir> [--out <dir>] [--fail-hook <hook>]
-  catalog
-  demo --name <name> --prompt <prompt> [--dir <dir>]
-`);
+  console.log(`harness-editor <command> [options]\n\nCommands:\n  chat [--name <name>] [--dir <dir>]\n  new --name <name> --prompt <prompt> [--dir <dir>] [--confirm-risk]\n  compile --project <dir> [--out <dir>]\n  sandbox --project <dir> [--out <dir>] [--fail-hook <hook>]\n  catalog\n  demo --name <name> --prompt <prompt> [--dir <dir>]`);
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
   const [command, ...rest] = argv;
   const flags = new Map<string, string>();
   const booleans = new Set<string>();
-
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index];
     if (!token.startsWith('--')) continue;
-
     const key = token.slice(2);
     const next = rest[index + 1];
-    if (!next || next.startsWith('--')) {
-      booleans.add(key);
-      continue;
+    if (!next || next.startsWith('--')) booleans.add(key);
+    else {
+      flags.set(key, next);
+      index += 1;
     }
-
-    flags.set(key, next);
-    index += 1;
   }
-
   return { command, flags, booleans };
 }
 
 function requiresConfirmationMessage(confirmations: Array<{ id: string; kind: string; message: string }>) {
-  return [
-    'Generation requires confirmation before proceeding:',
-    ...confirmations.map((item) => `- [${item.kind}] ${item.message} (${item.id})`),
-    'Re-run with --confirm-risk or use the interactive `chat` command.'
-  ].join('\n');
+  return ['Generation requires confirmation before proceeding:', ...confirmations.map((item) => `- [${item.kind}] ${item.message} (${item.id})`), 'Re-run with --confirm-risk or use the interactive `chat` command.'].join('\n');
 }
 
 async function createProject(name: string, prompt: string, dir: string, confirmRisk: boolean) {
   const target = resolve(dir, name);
   let project = generateHarnessProject(name, prompt);
-
-  if (project.authoring.confirmationRequests.length > 0 && !confirmRisk) {
-    throw new Error(requiresConfirmationMessage(project.authoring.confirmationRequests));
-  }
-
-  if (confirmRisk) {
-    project = applyRiskConfirmations(project, true);
-  }
-
+  if (project.authoring.confirmationRequests.length > 0 && !confirmRisk) throw new Error(requiresConfirmationMessage(project.authoring.confirmationRequests));
+  if (confirmRisk) project = applyRiskConfirmations(project, true);
   await writeHarnessProject(target, project);
-  console.log(
-    JSON.stringify(
-      {
-        projectDir: target,
-        summary: project.authoring.summary,
-        confirmations: project.authoring.confirmationRequests,
-        traceIntent: project.authoring.traceIntent
-      },
-      null,
-      2
-    )
-  );
+  console.log(JSON.stringify({ projectDir: target, summary: project.authoring.summary, confirmations: project.authoring.confirmationRequests, traceIntent: project.authoring.traceIntent }, null, 2));
   return target;
 }
 
 async function compileProject(projectDir: string, outDir?: string) {
   const project = await loadHarnessProject(resolve(projectDir));
   const unresolved = project.authoring.confirmationRequests.filter((request) => !request.confirmed);
-  if (unresolved.length > 0) {
-    throw new Error(requiresConfirmationMessage(unresolved));
-  }
-
+  if (unresolved.length > 0) throw new Error(requiresConfirmationMessage(unresolved));
   const resolvedOut = resolve(outDir ?? join(projectDir, 'compiler', 'claude-code'));
   await mkdir(resolvedOut, { recursive: true });
   const result = await compileClaude(project, resolvedOut);
@@ -100,27 +57,13 @@ async function compileProject(projectDir: string, outDir?: string) {
 }
 
 async function sandboxProject(projectDir: string, outDir?: string, failHook?: string) {
-  const result = await validateProject(resolve(projectDir), {
-    ...(outDir ? { outDir: resolve(outDir) } : {}),
-    ...(failHook ? { failHook } : {})
-  });
+  const result = await validateProject(resolve(projectDir), { ...(outDir ? { outDir: resolve(outDir) } : {}), ...(failHook ? { failHook } : {}) });
   console.log(JSON.stringify(result, null, 2));
-  if (!result.success) {
-    process.exitCode = 1;
-  }
+  if (!result.success) process.exitCode = 1;
 }
 
 async function catalog() {
-  console.log(
-    JSON.stringify(
-      {
-        blocks: BLOCK_REGISTRY,
-        composites: COMPOSITE_PATTERNS
-      },
-      null,
-      2
-    )
-  );
+  console.log(JSON.stringify({ blocks: BLOCK_REGISTRY, composites: COMPOSITE_PATTERNS }, null, 2));
 }
 
 async function chat(defaultName: string, defaultDir: string) {
@@ -135,10 +78,7 @@ async function chat(defaultName: string, defaultDir: string) {
     const name = (await rl.question(`Harness name (${defaultName}): `)).trim() || defaultName;
     const prompt = (await rl.question('Describe the harness you want to generate: ')).trim();
     const dir = (await rl.question(`Project directory (${defaultDir}): `)).trim() || defaultDir;
-
-    if (!prompt) {
-      throw new Error('A harness intent prompt is required.');
-    }
+    if (!prompt) throw new Error('A harness intent prompt is required.');
 
     let project = generateHarnessProject(name, prompt);
     if (project.authoring.confirmationRequests.length > 0) {

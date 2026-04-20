@@ -6,6 +6,9 @@ export type HookEvent =
   | 'Stop';
 
 export type RuntimeTarget = 'claude-code' | 'opencode' | 'codex';
+export type RegistryCategory = 'hook' | 'authoring' | 'control-flow' | 'state' | 'runtime' | 'safety';
+export type SafetyLevel = 'safe' | 'confirm';
+export type RuntimeIntentKind = 'hook' | 'mcp-server' | 'state' | 'custom-runtime';
 
 export type NodeKind =
   | HookEvent
@@ -62,6 +65,7 @@ export interface HarnessManifest {
   version: string;
   description: string;
   targetRuntime: RuntimeTarget;
+  supportedRuntimes?: RuntimeTarget[];
   createdAt: string;
   prompt: string;
 }
@@ -87,6 +91,7 @@ export interface CustomBlockDefinition {
   description: string;
   opaque: true;
   ports: PortSpec[];
+  runtimeTargets?: RuntimeTarget[];
 }
 
 export interface AuthoringDecision {
@@ -94,12 +99,40 @@ export interface AuthoringDecision {
   warnings: string[];
   confirmationRequests: ConfirmationRequest[];
   compatibleRuntimes: RuntimeTarget[];
-  traceIntent: string[];
+  traceIntent: TraceEvent['eventType'][];
+}
+
+export interface RegistryBlock {
+  kind: NodeKind;
+  description: string;
+  category: RegistryCategory;
+  safety: SafetyLevel;
+  ports: PortSpec[];
+  compatibleRuntimes: RuntimeTarget[];
+  supportsCustomConfig?: boolean;
+}
+
+export interface CompositePattern {
+  id: string;
+  name: string;
+  description: string;
+  includes: NodeKind[];
+  intentKinds?: RuntimeIntentKind[];
 }
 
 export interface RegistrySnapshot {
   blocks: RegistryBlock[];
   composites: CompositePattern[];
+}
+
+export interface RuntimeIntent {
+  id: string;
+  kind: RuntimeIntentKind;
+  label: string;
+  targetRuntime: RuntimeTarget;
+  sourceNodeIds: string[];
+  transport?: 'stdio' | 'in-memory';
+  safety: SafetyLevel;
 }
 
 export interface HarnessProject {
@@ -112,22 +145,7 @@ export interface HarnessProject {
   customBlocks: CustomBlockDefinition[];
   registry: RegistrySnapshot;
   authoring: AuthoringDecision;
-}
-
-export interface RegistryBlock {
-  kind: NodeKind;
-  description: string;
-  category: RegistryCategory;
-  ports: PortSpec[];
-  compatibleRuntimes: RuntimeTarget[];
-}
-
-export interface CompositePattern {
-  id: string;
-  name: string;
-  description: string;
-  includes: NodeKind[];
-  intentKinds?: RuntimeIntentKind[];
+  runtimeIntents?: RuntimeIntent[];
 }
 
 export interface CompileResult {

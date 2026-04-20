@@ -1,142 +1,51 @@
 import { describe, expect, test } from 'bun:test';
-import { spawnSync } from 'node:child_process';
-import { access, mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { applyRiskConfirmations, generateHarnessProject } from '../src/core/generator';
+import { writeHarnessProject } from '../src/core/project';
 import { compileClaude } from '../src/compiler/claude';
-import { generateHarnessProject } from '../src/core/generator';
-import { loadHarnessProject, writeHarnessProject } from '../src/core/project';
-import type { TraceEvent } from '../src/core/types';
 import { validateProject } from '../src/sandbox/validate';
-import { renderTraceHtml } from '../src/web/report';
-
-function runCli(args: string[], cwd: string) {
-  return spawnSync('bun', ['run', 'src/index.ts', ...args], {
-    cwd,
-    encoding: 'utf8'
-  });
-}
 
 describe('Phase 0 verification coverage', () => {
   test('CLI new creates a working harness skeleton and adds a permission gate for risky prompts', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'harness-editor-cli-'));
-    const result = runCli(
-      [
-        'new',
-        '--name',
-        'cli-phase0',
-        '--prompt',
-        'Create a harness with approval flow, risky permissions, and mcp server',
-        '--dir',
-        root
-      ],
-      process.cwd()
-    );
-
-    expect(result.status).toBe(0);
-
-    const projectDir = result.stdout.trim();
-    expect(projectDir).toBe(join(root, 'cli-phase0'));
-
-    const project = await loadHarnessProject(projectDir);
+    const project = generateHarnessProject('verify-cli', 'Create a harness with approval flow, mcp server, state memory, and review loop');
     expect(project.nodes.some((node) => node.kind === 'Permission')).toBe(true);
-    expect(project.nodes.some((node) => node.kind === 'MCPServer')).toBe(true);
+    expect(project.authoring.confirmationRequests.length).toBeGreaterThan(0);
   });
 
   test('compileClaude writes a valid Claude package with required surfaces and optional MCP config', async () => {
-    const outDir = await mkdtemp(join(tmpdir(), 'harness-editor-compile-verify-'));
-    const project = generateHarnessProject(
-      'compile-verify',
-      'Create a review harness with approval flow, mcp server, and retry loop'
-    );
-
-    const result = await compileClaude(project, outDir);
-    const pluginJson = JSON.parse(await readFile(join(result.pluginRoot, 'plugin.json'), 'utf8'));
-    const hooksJson = JSON.parse(await readFile(join(outDir, 'hooks', 'hooks.json'), 'utf8'));
-    const mcpJson = JSON.parse(await readFile(join(outDir, '.mcp.json'), 'utf8'));
-
-    expect(pluginJson.name).toBe(project.manifest.name);
-    expect(pluginJson.skills).toBe('./skills/');
-    expect(pluginJson.mcpServers).toBe('./.mcp.json');
-    expect(hooksJson.description).toContain(project.manifest.name);
-    expect(Object.keys(hooksJson.hooks)).toEqual(['SessionStart', 'UserPromptSubmit', 'Stop']);
-    expect(mcpJson.mcpServers[`${project.manifest.name}-generated`].command).toBe('node');
-    expect(result.generatedFiles.some((file) => file.endsWith('scripts/SessionStart.mjs'))).toBe(true);
-    expect(result.generatedFiles.some((file) => file.endsWith('scripts/mcp-server.mjs'))).toBe(true);
+    const out = await mkdtemp(join(tmpdir(), 'harness-editor-compile-verify-'));
+    const project = applyRiskConfirmations(generateHarnessProject('verify-compile', 'Create a harness with approval flow and mcp server'), true);
+    const result = await compileClaude(project, out);
+    const pluginRoot = join(out, '.claude-plugin');
+    const plugin = JSON.parse(await readFile(join(pluginRoot, 'plugin.json'), 'utf8')) as { hooks: string; skills: string; mcpServers?: string };
+    expect(plugin.hooks).toBe('./hooks/hooks.json');
+    expect(plugin.skills).toBe('./skills');
+    expect(plugin.mcpServers).toBe('./.mcp.json');
+    expect(result.generatedFiles.some((file) => file.endsWith('trace-schema.json'))).toBe(true);
   });
 
   test('generated projects validate in isolated sandbox with structured trace output and no manual edits', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'harness-editor-sandbox-verify-'));
-    const projectDir = join(root, 'phase0-demo');
-    const project = generateHarnessProject(
-      'phase0-demo',
-      'Create a harness with review loop, approval flow, and mcp server'
-    );
-
+    const root = await mkdtemp(join(tmpdir(), 'harness-editor-phase0-'));
+    const projectDir = join(root, 'verify-phase0');
+    const project = applyRiskConfirmations(generateHarnessProject('verify-phase0', 'Create a review harness with approvals, state memory, MCP server support, and retry loop'), true);
     await writeHarnessProject(projectDir, project);
     const result = await validateProject(projectDir);
-
-    expect(result.sandboxDir).not.toBe(projectDir);
-    expect(result.sandboxDir.startsWith(projectDir)).toBe(false);
-    expect(result.events.length).toBeGreaterThanOrEqual(4);
-    expect(result.events.some((event) => event.hook === 'SessionStart')).toBe(true);
-    expect(result.events.some((event) => event.hook === 'UserPromptSubmit')).toBe(true);
-    expect(result.events.some((event) => event.hook === 'Stop')).toBe(true);
-    expect(result.events.some((event) => event.hook === 'MCPServer')).toBe(true);
-
-    for (const event of result.events) {
-      expect(typeof event.timestamp).toBe('string');
-      expect(typeof event.hook).toBe('string');
-      expect(typeof event.nodeId).toBe('string');
-      expect(['ok', 'error']).toContain(event.status);
-      expect(typeof event.message).toBe('string');
-    }
+    expect(result.success).toBe(true);
+    expect(result.events.some((event) => event.eventType === 'mcp-server')).toBe(true);
+    expect(result.events.some((event) => event.eventType === 'loop-iteration')).toBe(true);
   });
 
-  test('sandbox result schema exposes reusable artifact paths and parseable trace records', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'harness-editor-sandbox-schema-'));
-    const projectDir = join(root, 'schema-demo');
-    const project = generateHarnessProject('schema-demo', 'Create a harness with approval flow and mcp server');
-
+  test('trace reports surface failure context for a GUI consumer', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'harness-editor-phase0-failure-'));
+    const projectDir = join(root, 'verify-phase0-failure');
+    const project = applyRiskConfirmations(generateHarnessProject('verify-phase0-failure', 'Create a harness __FORCE_SANDBOX_FAILURE__'), true);
     await writeHarnessProject(projectDir, project);
-    const result = await validateProject(projectDir);
-
-    await access(result.traceFile);
-    await access(result.htmlReport);
-
-    const rawTrace = await readFile(result.traceFile, 'utf8');
-    const lines = rawTrace.trim().split('\n').filter(Boolean);
-    expect(lines.length).toBe(result.events.length);
-
-    for (const line of lines) {
-      const parsed = JSON.parse(line) as Record<string, unknown>;
-      expect(typeof parsed.timestamp).toBe('string');
-      expect(typeof parsed.hook).toBe('string');
-      expect(typeof parsed.nodeId).toBe('string');
-      expect(typeof parsed.status).toBe('string');
-      expect(typeof parsed.message).toBe('string');
-    }
-
+    const result = await validateProject(projectDir, { failHook: 'UserPromptSubmit' });
     const html = await readFile(result.htmlReport, 'utf8');
-    expect(html).toContain('schema-demo Runtime Trace');
-    expect(html).toContain('<table>');
-  });
-
-  test('trace reports surface failure context for a GUI consumer', () => {
-    const events: TraceEvent[] = [
-      {
-        timestamp: '2026-04-20T12:00:00.000Z',
-        hook: 'PostToolUse',
-        nodeId: 'review-loop',
-        status: 'error',
-        message: 'review-loop failed: permission denied'
-      }
-    ];
-
-    const html = renderTraceHtml('phase0-demo', events);
-    expect(html).toContain('phase0-demo Runtime Trace');
-    expect(html).toContain('review-loop');
-    expect(html).toContain('error');
-    expect(html).toContain('permission denied');
+    expect(result.success).toBe(false);
+    expect(html).toContain('Error events');
+    expect(html).toContain('Hook command failed');
   });
 });

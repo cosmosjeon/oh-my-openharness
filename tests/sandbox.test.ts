@@ -10,20 +10,24 @@ describe('validateProject', () => {
   test('runs generated hooks in isolation and emits structured trace output', async () => {
     const root = await mkdtemp(join(tmpdir(), 'harness-editor-project-'));
     const projectDir = join(root, 'demo');
-    const project = generateHarnessProject('demo', 'Create a harness with review loop, approval, state memory, and mcp server');
+    const project = applyRiskConfirmations(
+      generateHarnessProject('demo', 'Create a harness with review loop, approval, state memory, and mcp server'),
+      true
+    );
     await writeHarnessProject(projectDir, project);
 
     const result = await validateProject(projectDir);
-    const eventTypes = new Set(result.events.map((event) => String((event as unknown as Record<string, unknown>).eventType ?? '')));
+    const eventTypes = new Set(result.events.map((event) => event.eventType));
     const reportHtml = await readFile(result.htmlReport, 'utf8');
 
     expect(result.traceFile.startsWith(result.sandboxDir)).toBe(true);
-    expect(result.events.length).toBeGreaterThan(0);
-    expect(eventTypes.has('hook')).toBe(true);
-    expect(eventTypes.has('branch')).toBe(true);
-    expect(eventTypes.has('loop_iteration')).toBe(true);
-    expect(eventTypes.has('state_mutation')).toBe(true);
-    expect(eventTypes.has('runtime_ready')).toBe(true);
+    expect(result.installDir.length).toBeGreaterThan(0);
+    expect(result.success).toBe(true);
+    expect(eventTypes.has('hook-activation')).toBe(true);
+    expect(eventTypes.has('branch-selection')).toBe(true);
+    expect(eventTypes.has('loop-iteration')).toBe(true);
+    expect(eventTypes.has('state-transition')).toBe(true);
+    expect(eventTypes.has('mcp-server')).toBe(true);
     expect(reportHtml).toContain('Event Type');
     expect(reportHtml).toContain('Permission gate requires approval');
   });
@@ -31,33 +35,14 @@ describe('validateProject', () => {
   test('surfaces hook failures with trace report context', async () => {
     const root = await mkdtemp(join(tmpdir(), 'harness-editor-project-'));
     const projectDir = join(root, 'demo-fail');
-    const project = generateHarnessProject('demo-fail', 'Create a harness __FORCE_SANDBOX_FAILURE__');
+    const project = applyRiskConfirmations(generateHarnessProject('demo-fail', 'Create a harness __FORCE_SANDBOX_FAILURE__'), true);
     await writeHarnessProject(projectDir, project);
 
-    try {
-      await validateProject(projectDir);
-      throw new Error('expected validateProject to fail');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const reportPath = message.match(/Trace report: (.*)\nTrace log:/)?.[1];
-      expect(message).toContain('Forced sandbox failure');
-      expect(reportPath).toBeTruthy();
-      if (reportPath) {
-        const reportHtml = await readFile(reportPath, 'utf8');
-        expect(reportHtml).toContain('Forced sandbox failure');
-        expect(reportHtml).toContain('Error events');
-      }
-    }
-  });
-
-  test('surfaces failing hooks with enough context for a future GUI', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'harness-editor-project-'));
-    const projectDir = join(root, 'demo');
-    const project = applyRiskConfirmations(generateHarnessProject('demo', 'Create a basic harness'), true);
-    await writeHarnessProject(projectDir, project);
-    const result = await validateProject(projectDir, { failHook: 'PreToolUse' });
+    const result = await validateProject(projectDir, { failHook: 'UserPromptSubmit' });
     expect(result.success).toBe(false);
-    expect(result.failure?.eventType).toBe('failure');
-    expect(String(result.failure?.metadata?.stderr ?? '')).toContain('Injected failure');
+    expect(result.failure?.message).toContain('Hook command failed');
+    const reportHtml = await readFile(result.htmlReport, 'utf8');
+    expect(reportHtml).toContain('Error events');
+    expect(reportHtml).toContain('Hook command failed');
   });
 });

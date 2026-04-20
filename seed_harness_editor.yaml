@@ -1,0 +1,172 @@
+goal: Build "harness-editor" — an MIT open-source no-code visual harness builder (React
+  Flow node graph + inspector panel + AI chat) distributed as a single bun command
+  (bunx harness-editor) that installs as a Claude Code plugin (Phase 0 harness-maker),
+  compiles a canonical harness.yaml IR to deployable runtime packages (Claude Code
+  / OpenCode / Codex), and provides a live instrumented sandbox debugger with real-time
+  node graph highlighting via WebSocket
+
+task_type: code
+
+brownfield_context:
+  project_type: brownfield
+  context_references:
+  - path: /Users/cosmos/Documents/harness/ouroboros
+    role: reference
+    summary: Workflow engine with immutable Seed YAML specs, 3-stage evaluation, evolutionary
+      loops — Claude Code plugin with MCP and hooks
+  - path: /Users/cosmos/Documents/harness/oh-my-claudecode
+    role: reference
+    summary: 39 skills + 21 agents + 10 lifecycle hooks + persistent .omc/ state —
+      most mature Claude Code plugin reference for harness-maker architecture
+  - path: /Users/cosmos/Documents/harness/oh-my-openagent
+    role: reference
+    summary: OpenCode plugin with 11 agents + 52 hooks + 26 tools + 3-tier MCP + Boulder
+      continuation + Ralph loop — maximum expressiveness reference for IR design
+  - path: /Users/cosmos/Documents/harness/oh-my-codex
+    role: reference
+    summary: 40 skills + 35 agent role prompts + Codex-native hooks + keyword-triggered
+      skill invocation — Codex compiler target reference
+  - path: /Users/cosmos/Documents/harness/superpowers
+    role: reference
+    summary: 15-skill pack with behavior-shaping docs and SessionStart injection —
+      multi-platform skill pack pattern reference
+  - path: /Users/cosmos/Documents/harness/gstack
+    role: reference
+    summary: Template-driven skill pack with role-based specialization — template
+      and composite pattern extraction reference
+  existing_patterns:
+  - SKILL.md as de-facto standard for skill content (markdown + YAML frontmatter) — used by all 6 repos
+  - "Hook lifecycle events: SessionStart, PreToolUse, PostToolUse, UserPromptSubmit, Stop as common subset across Claude Code and Codex"
+  - plugin.json manifest format for Claude Code plugins (omc, ouroboros)
+  - opencode.json manifest format for OpenCode plugins (omo)
+  - .codex/hooks.json manifest format for Codex packages (omx)
+  - JSON-based persistent state in runtime-specific directories (.omc/state/, .omo/state/)
+  - MCP server registration for exposing tools/resources to the host runtime
+  - Hook handlers as executable .mjs/.ts scripts that parse stdin and write structured output
+  - Keyword-triggered skill invocation via UserPromptSubmit hooks
+  - Ralph-style retry loops with evaluate-mutate-retry pattern (omo, ouroboros)
+  existing_dependencies:
+  - React + React Flow (node graph canvas UI)
+  - Bun (runtime, package manager, dev server)
+  - WebSocket (GUI <-> CLI plugin real-time sync and live debugger trace events)
+  - Claude Code plugin system (Phase 0 harness-maker host)
+  - YAML (harness.yaml IR format)
+  - Markdown (skill content authoring in inspector)
+
+constraints:
+- TypeScript + React + React Flow for GUI layer
+- Bun as runtime and package manager
+- "Single entry point: bunx harness-editor (auto-detects host runtime, registers plugin, opens GUI)"
+- No separate infrastructure or API keys — AI comes from host runtime LLM via plugin interface
+- MIT license, fully open-source
+- Users never touch harness code directly — pure no-code drag-and-drop + AI chat
+- New canonical IR format (harness.yaml directory structure) with compiler backends per runtime
+- Pre-built block catalog seeded from omc, omo, ouroboros reference harnesses
+- Layout stored in sidecar file (harness.layout.json), IR is purely semantic
+- Composites use reference-based linking ($ref)
+- IR uses directory structure (manifest.yaml + nodes/ + composites/ + custom-blocks/)
+- Claude Code is first target runtime for the harness-maker itself
+- Phase 0 CLI-only mode works without GUI
+- No multi-user collaboration
+- No built-in version control UI (git suffices)
+- No non-harness workflow use cases
+- No standalone runtime without host
+- No SaaS billing/auth/teams infrastructure
+
+acceptance_criteria:
+- bunx harness-editor opens browser with empty canvas + chat panel + block catalog sidebar
+- Catalog displays 11+ atomic primitives (SessionStart, PreToolUse, PostToolUse, UserPromptSubmit, Stop, Skill, Condition, Loop, StateRead/Write, MCPServer, Agent, SystemPrompt, Permission, Merge, Sequence) and 9 composite patterns (Permission Gate, Review Loop, Session Init Bundle, Boulder Continuation, Ralph Loop, Subagent Delegation, 3-Tier MCP Registration, Lore/Memory Persist, Evolutionary Seed)
+- Composite patterns expand on double-click to show internal atomic nodes (Figma component model)
+- Inspector panel provides markdown editor + YAML frontmatter form for Skill nodes
+- AI chat input auto-wires nodes onto canvas in real-time as user describes desired behavior
+- AI generates new opaque custom .mjs code blocks with typed input/output ports on demand
+- Canvas shows runtime compatibility indicators per node (checkmarks for Claude Code, OpenCode, Codex)
+- Export to Claude Code produces working plugin.json + SKILL.md files + .mjs hook scripts folder
+- Live sandbox test launches sandboxed Claude Code session, user sends real prompts, node graph highlights in real-time showing hook fires, branch decisions, state mutations via WebSocket
+- Hot-reload on node edit without restarting sandbox session
+- Export also produces working packages for OpenCode and Codex targets
+- "CLI entry point works: user installs harness-making plugin in Claude Code, chats to build harness, browser canvas opens and reflects changes live"
+- Harness-maker itself is a full omc-level harness (skills, hooks, agents, state) that outputs other harnesses
+
+ontology_schema:
+  name: HarnessGraph
+  description: The domain model for a visual AI coding agent harness — a directed
+    graph of typed nodes (hook events, skills, flow control, runtime config) connected
+    by typed edges, compiled from a canonical IR format into deployable runtime packages
+  fields:
+  - name: node
+    type: entity
+    description: A typed block on the canvas (hook event, skill, condition, loop, state, MCP, custom)
+    required: true
+  - name: edge
+    type: entity
+    description: Directed connection between source port and target port of two nodes
+    required: true
+  - name: composite
+    type: entity
+    description: Expandable pattern composed of sub-nodes and sub-edges (Figma component model)
+    required: true
+  - name: custom_block
+    type: entity
+    description: AI-generated opaque .mjs code block with typed ports
+    required: true
+  - name: skill_content
+    type: document
+    description: Markdown body + YAML frontmatter for Skill nodes (L1 content)
+    required: true
+  - name: harness_manifest
+    type: entity
+    description: Top-level harness metadata (name, version, target runtimes)
+    required: true
+  - name: trace_event
+    type: entity
+    description: Runtime instrumentation event emitted during live sandbox debugging
+    required: true
+
+evaluation_principles:
+- name: end_to_end_golden_path
+  description: All 12 Golden Path steps execute successfully from bunx command through live sandbox debugging
+  weight: 1.0
+- name: no_code_purity
+  description: Users never need to read or write code at any point in the harness creation workflow
+  weight: 0.9
+- name: compilation_correctness
+  description: Exported runtime packages install and function correctly in target host runtimes
+  weight: 0.95
+- name: live_debugger_fidelity
+  description: Node graph highlighting accurately reflects real-time hook execution, branch decisions, and state mutations
+  weight: 0.85
+- name: ai_chat_responsiveness
+  description: Chat-driven node generation produces valid, correctly-wired nodes on the canvas within seconds
+  weight: 0.8
+- name: catalog_completeness
+  description: Pre-built blocks cover core behaviors of omc, omo, and ouroboros harnesses
+  weight: 0.75
+- name: phase_0_dogfooding
+  description: The harness-maker harness itself is a fully functional Claude Code plugin
+  weight: 0.9
+- name: single_command_setup
+  description: bunx harness-editor handles detection, plugin registration, and GUI launch with zero config
+  weight: 0.7
+
+exit_conditions:
+- name: golden_path_complete
+  description: All 12 acceptance test steps pass end-to-end
+  criteria: User runs bunx harness-editor, builds a harness via drag-and-drop AND AI chat, exports to Claude Code, runs live sandbox test with real-time node highlighting, hot-reloads, and exports to all 3 runtimes
+- name: harness_maker_self_hosting
+  description: The harness-maker harness runs as a functional Claude Code plugin
+  criteria: Install harness-maker in Claude Code, chat to create a new harness, harness.yaml IR is generated correctly, compiler produces working runtime package
+- name: compilation_validation
+  description: Exported packages install and run correctly in target runtimes
+  criteria: Claude Code plugin.json + hooks + skills install and hooks fire correctly on lifecycle events
+- name: catalog_functional
+  description: All atomic and composite blocks are draggable, wirable, configurable, and compilable
+  criteria: Each block type can be placed on canvas, connected, configured in inspector, and included in compiled output
+
+metadata:
+  seed_id: seed_772723ad7a2a
+  version: 1.0.0
+  created_at: "2026-04-20T09:06:38Z"
+  ambiguity_score: 0.186
+  interview_id: interview_20260419_103509
+  parent_seed_id: null

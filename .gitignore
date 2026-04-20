@@ -1,0 +1,6 @@
+.omx/
+node_modules/
+.harness-editor/
+dist/
+coverage/
+.test-job-state-db-*

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compileClaude } from '../src/compiler/claude';
@@ -91,6 +91,35 @@ describe('Phase 0 verification coverage', () => {
       expect(['ok', 'error']).toContain(event.status);
       expect(typeof event.message).toBe('string');
     }
+  });
+
+  test('sandbox result schema exposes reusable artifact paths and parseable trace records', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'harness-editor-sandbox-schema-'));
+    const projectDir = join(root, 'schema-demo');
+    const project = generateHarnessProject('schema-demo', 'Create a harness with approval flow and mcp server');
+
+    await writeHarnessProject(projectDir, project);
+    const result = await validateProject(projectDir);
+
+    await access(result.traceFile);
+    await access(result.htmlReport);
+
+    const rawTrace = await readFile(result.traceFile, 'utf8');
+    const lines = rawTrace.trim().split('\n').filter(Boolean);
+    expect(lines.length).toBe(result.events.length);
+
+    for (const line of lines) {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      expect(typeof parsed.timestamp).toBe('string');
+      expect(typeof parsed.hook).toBe('string');
+      expect(typeof parsed.nodeId).toBe('string');
+      expect(typeof parsed.status).toBe('string');
+      expect(typeof parsed.message).toBe('string');
+    }
+
+    const html = await readFile(result.htmlReport, 'utf8');
+    expect(html).toContain('schema-demo Runtime Trace');
+    expect(html).toContain('<table>');
   });
 
   test('trace reports surface failure context for a GUI consumer', () => {

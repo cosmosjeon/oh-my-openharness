@@ -66,9 +66,18 @@ export async function validateProject(projectDir: string, outDir?: string): Prom
     .split('\n')
     .filter(Boolean)
     .map((line) => JSON.parse(line) as TraceEvent);
+  const failure = events.find((event) => event.status === 'error');
 
   const htmlReport = join(sandboxDir, 'trace-report.html');
   await writeFile(htmlReport, renderTraceHtml(project.manifest.name, events));
 
-  return { sandboxDir, traceFile, htmlReport, events };
+  return {
+    sandboxDir,
+    installDir: compileDir,
+    traceFile,
+    htmlReport,
+    events,
+    success: !failure,
+    failure
+  };
 }

@@ -48,6 +48,12 @@ export const COMPOSITE_PATTERNS: CompositePattern[] = [
     includes: ['SessionStart', 'SystemPrompt', 'StateWrite']
   },
   {
+    id: 'boulder-continuation',
+    name: 'Boulder Continuation',
+    description: 'Continue blocked work by checkpointing and re-entering the main flow',
+    includes: ['Condition', 'StateWrite', 'Sequence']
+  },
+  {
     id: 'ralph-loop',
     name: 'Ralph Loop',
     description: 'Persistent verify-fix loop',
@@ -64,5 +70,31 @@ export const COMPOSITE_PATTERNS: CompositePattern[] = [
     name: '3-Tier MCP Registration',
     description: 'Attach MCP server and gate its usage',
     includes: ['MCPServer', 'Permission', 'Sequence']
+  },
+  {
+    id: 'lore-memory-persist',
+    name: 'Lore/Memory Persist',
+    description: 'Persist memory after successful flow completion',
+    includes: ['StateWrite', 'Skill', 'Sequence']
+  },
+  {
+    id: 'evolutionary-seed',
+    name: 'Evolutionary Seed',
+    description: 'Seed an opaque custom logic block that can evolve later',
+    includes: ['CustomBlock', 'Skill', 'Sequence']
   }
 ];
+
+export function createRegistrySnapshot() {
+  return {
+    blocks: BLOCK_REGISTRY.map((block) => ({
+      ...block,
+      ports: block.ports.map((port) => ({ ...port })),
+      compatibleRuntimes: [...block.compatibleRuntimes]
+    })),
+    composites: COMPOSITE_PATTERNS.map((pattern) => ({
+      ...pattern,
+      includes: [...pattern.includes]
+    }))
+  };
+}

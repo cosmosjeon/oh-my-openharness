@@ -1,4 +1,16 @@
-import type { GraphEdge, GraphNode, HarnessProject, LayoutNode, SkillFile } from './types';
+import { COMPOSITE_PATTERNS, createRegistrySnapshot } from './registry';
+import type {
+  AuthoringDecision,
+  CompositeInstance,
+  ConfirmationRequest,
+  CustomBlockDefinition,
+  GraphEdge,
+  GraphNode,
+  HarnessProject,
+  LayoutNode,
+  SkillFile,
+  TraceEvent
+} from './types';
 
 function hasAny(text: string, terms: string[]): boolean {
   return terms.some((term) => text.includes(term));
@@ -13,44 +25,143 @@ function createSkill(prompt: string, name: string): SkillFile {
   };
 }
 
+function pushNode(nodes: GraphNode[], kind: GraphNode['kind'], label: string, config?: Record<string, unknown>) {
+  const id = `${kind.toLowerCase()}-${nodes.length + 1}`;
+  nodes.push({ id, kind, label, config });
+  return id;
+}
+
+function attach(nodes: GraphNode[], edges: GraphEdge[], from: string, to: string, label?: string) {
+  edges.push({ id: `edge-${edges.length + 1}`, from, to, label });
+}
+
+function createConfirmationRequests(normalized: string): ConfirmationRequest[] {
+  const requests: ConfirmationRequest[] = [];
+  if (hasAny(normalized, ['permission', 'approve', 'approval', '권한', '승인'])) {
+    requests.push({
+      id: 'confirm-permission-gate',
+      kind: 'risk-bearing-permission',
+      reason: 'Prompt implies a risky permission or approval boundary.',
+      message: 'Confirm the permission or approval policy before emitting the final runtime package.',
+      confirmed: false
+    });
+  }
+  if (hasAny(normalized, ['delete', 'destroy', 'reset', 'drop', '파괴', '삭제'])) {
+    requests.push({
+      id: 'confirm-destructive-runtime',
+      kind: 'destructive-runtime',
+      reason: 'Prompt implies destructive runtime behavior.',
+      message: 'Confirm destructive runtime behavior before compiling runnable hooks.',
+      confirmed: false
+    });
+  }
+  return requests;
+}
+
+function selectCompositeInstances(nodes: GraphNode[], normalized: string): CompositeInstance[] {
+  const wanted = new Set<string>(['session-init-bundle']);
+  if (hasAny(normalized, ['approval', 'approve', 'permission', '권한', '승인'])) wanted.add('permission-gate');
+  if (hasAny(normalized, ['retry', 'loop', 'review', '검토', '반복'])) wanted.add('review-loop');
+  if (hasAny(normalized, ['mcp', 'server', 'tool', '도구', '서버'])) wanted.add('mcp-registration');
+  if (hasAny(normalized, ['memory', 'state', '상태', '기억'])) wanted.add('lore-memory-persist');
+  if (hasAny(normalized, ['custom', 'novel', 'opaque', '새로운', '신규'])) wanted.add('evolutionary-seed');
+
+  return COMPOSITE_PATTERNS.filter((pattern) => wanted.has(pattern.id)).map((pattern, index) => ({
+    id: `composite-${index + 1}`,
+    patternId: pattern.id,
+    label: pattern.name,
+    expandedNodeIds: nodes.filter((node) => pattern.includes.includes(node.kind)).map((node) => node.id)
+  }));
+}
+
+function createCustomBlocks(normalized: string): CustomBlockDefinition[] {
+  if (!hasAny(normalized, ['custom', 'novel', 'opaque', '새로운', '신규', 'runtime'])) {
+    return [];
+  }
+  return [
+    {
+      id: 'custom-runtime-1',
+      label: 'Novel Runtime Block',
+      description: 'Opaque runtime generation block for novel hook/runtime logic',
+      opaque: true,
+      ports: [
+        { id: 'intent-in', label: 'Intent', direction: 'input' },
+        { id: 'runtime-out', label: 'Runtime', direction: 'output' }
+      ]
+    }
+  ];
+}
+
+function createAuthoringDecision(prompt: string, normalized: string, confirmationRequests: ConfirmationRequest[]): AuthoringDecision {
+  const warnings: string[] = [];
+  if (confirmationRequests.length > 0) warnings.push('Risk-sensitive operations require confirmation before final export.');
+  if (hasAny(normalized, ['novel', 'new runtime', '새로운', '신규'])) warnings.push('Novel runtime generation should be validated against representative E2E scenarios.');
+
+  const traceIntent: TraceEvent['eventType'][] = ['hook-activation', 'state-transition'];
+  if (hasAny(normalized, ['review', 'loop', 'retry', '검토', '반복'])) traceIntent.push('loop-iteration');
+  if (hasAny(normalized, ['condition', 'branch', 'if', '분기'])) traceIntent.push('branch-selection');
+  if (hasAny(normalized, ['custom', 'opaque', 'novel', '새로운'])) traceIntent.push('custom-block');
+  if (hasAny(normalized, ['mcp', 'server'])) traceIntent.push('mcp-server');
+  traceIntent.push('failure');
+
+  return {
+    summary: `Generate a Claude Code harness for: ${prompt}`,
+    warnings,
+    confirmationRequests,
+    compatibleRuntimes: ['claude-code', 'opencode', 'codex'],
+    traceIntent
+  };
+}
+
 export function generateHarnessProject(name: string, prompt: string): HarnessProject {
   const normalized = prompt.toLowerCase();
-  const nodes: GraphNode[] = [
-    { id: 'session-start', kind: 'SessionStart', label: 'Session Start' },
-    { id: 'user-submit', kind: 'UserPromptSubmit', label: 'User Prompt Submit' },
-    { id: 'main-skill', kind: 'Skill', label: 'Generate Harness Skeleton', config: { skillId: 'skill-main' } },
-    { id: 'sequence-main', kind: 'Sequence', label: 'Primary Flow' },
-    { id: 'stop', kind: 'Stop', label: 'Stop' }
-  ];
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+
+  const sessionStart = pushNode(nodes, 'SessionStart', 'Session Start');
+  const userSubmit = pushNode(nodes, 'UserPromptSubmit', 'User Prompt Submit');
+  const mainSkill = pushNode(nodes, 'Skill', 'Generate Harness Skeleton', { skillId: 'skill-main' });
+  const sequence = pushNode(nodes, 'Sequence', 'Primary Flow');
+  const stop = pushNode(nodes, 'Stop', 'Stop');
+
+  attach(nodes, edges, sessionStart, userSubmit);
+  attach(nodes, edges, userSubmit, mainSkill);
+  attach(nodes, edges, mainSkill, sequence);
+  attach(nodes, edges, sequence, stop);
 
   if (hasAny(normalized, ['approval', 'approve', 'permission', '권한', '승인'])) {
-    nodes.push({ id: 'permission-gate', kind: 'Permission', label: 'Permission Gate' });
+    const permissionId = pushNode(nodes, 'Permission', 'Permission Gate');
+    attach(nodes, edges, mainSkill, permissionId, 'requires-review');
+    attach(nodes, edges, permissionId, sequence, 'approved');
   }
   if (hasAny(normalized, ['mcp', 'server', 'tool', '도구', '서버'])) {
-    nodes.push({ id: 'mcp-server', kind: 'MCPServer', label: 'MCP Server Registration' });
+    const mcpId = pushNode(nodes, 'MCPServer', 'MCP Server Registration');
+    attach(nodes, edges, sequence, mcpId, 'register-mcp');
+    attach(nodes, edges, mcpId, stop, 'ready');
   }
   if (hasAny(normalized, ['retry', 'loop', 'review', '검토', '반복'])) {
-    nodes.push({ id: 'review-loop', kind: 'Loop', label: 'Review Loop' });
+    const loopId = pushNode(nodes, 'Loop', 'Review Loop');
+    attach(nodes, edges, sequence, loopId, 'review');
+    attach(nodes, edges, loopId, sequence, 'retry');
   }
   if (hasAny(normalized, ['state', 'memory', '기억', '상태'])) {
-    nodes.push({ id: 'state-write', kind: 'StateWrite', label: 'Persist State' });
+    const stateId = pushNode(nodes, 'StateWrite', 'Persist State');
+    attach(nodes, edges, sequence, stateId, 'persist');
+    attach(nodes, edges, stateId, stop, 'state-saved');
   }
   if (hasAny(normalized, ['custom', 'novel', 'opaque', '새로운', '신규'])) {
-    nodes.push({ id: 'custom-block', kind: 'CustomBlock', label: 'Novel Runtime Block' });
-  }
-
-  const edges: GraphEdge[] = [];
-  const order = nodes.map((node) => node.id);
-  for (let i = 0; i < order.length - 1; i += 1) {
-    edges.push({ id: `edge-${i}`, from: order[i], to: order[i + 1] });
+    const customId = pushNode(nodes, 'CustomBlock', 'Novel Runtime Block', { definitionId: 'custom-runtime-1' });
+    attach(nodes, edges, mainSkill, customId, 'extend-runtime');
+    attach(nodes, edges, customId, sequence, 'runtime-generated');
   }
 
   const layout: LayoutNode[] = nodes.map((node, index) => ({
     id: node.id,
-    x: 80 + index * 180,
-    y: index % 2 === 0 ? 120 : 260
+    x: 80 + (index % 4) * 220,
+    y: 120 + Math.floor(index / 4) * 160
   }));
 
+  const confirmationRequests = createConfirmationRequests(normalized);
   const skill = createSkill(prompt, name);
 
   return {
@@ -65,6 +176,10 @@ export function generateHarnessProject(name: string, prompt: string): HarnessPro
     nodes,
     edges,
     skills: [skill],
-    layout
+    layout,
+    composites: selectCompositeInstances(nodes, normalized),
+    customBlocks: createCustomBlocks(normalized),
+    registry: createRegistrySnapshot(),
+    authoring: createAuthoringDecision(prompt, normalized, confirmationRequests)
   };
 }

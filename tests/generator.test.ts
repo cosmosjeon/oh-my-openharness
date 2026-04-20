@@ -7,5 +7,8 @@ describe('generateHarnessProject', () => {
     const kinds = project.nodes.map((node) => node.kind);
     expect(kinds).toContain('MCPServer');
     expect(kinds).toContain('Permission');
+    expect(project.authoring.confirmationRequests.length).toBeGreaterThan(0);
+    expect(project.registry.blocks.length).toBeGreaterThan(5);
+    expect(project.composites.length).toBeGreaterThan(1);
   });
 });

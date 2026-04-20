@@ -5,7 +5,9 @@ import type { CompileResult, HarnessProject, HookEvent } from '../core/types';
 const HOOK_EVENTS: HookEvent[] = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop'];
 
 function scriptForHook(hook: HookEvent, projectName: string): string {
-  return `import { appendFile, mkdir } from 'node:fs/promises';\nimport { dirname } from 'node:path';\n\nconst traceFile = process.env.HARNESS_EDITOR_TRACE_FILE;\nconst chunks = [];\nfor await (const chunk of process.stdin) {\n  chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));\n}\nconst payload = Buffer.concat(chunks).toString('utf8');\nif (traceFile) {\n  await mkdir(dirname(traceFile), { recursive: true });\n  await appendFile(traceFile, JSON.stringify({ timestamp: new Date().toISOString(), hook: '${hook}', nodeId: '${hook}', status: 'ok', message: '${projectName}:${hook}', payloadLength: payload.length }) + '\\n');\n}\nconsole.log(JSON.stringify({ continue: true, hook: '${hook}' }));\n`;
+  const eventType =
+    hook === 'PreToolUse' || hook === 'PostToolUse' ? 'state-transition' : 'hook-activation';
+  return `import { appendFile, mkdir } from 'node:fs/promises';\nimport { dirname } from 'node:path';\n\nconst traceFile = process.env.HARNESS_EDITOR_TRACE_FILE;\nconst chunks = [];\nfor await (const chunk of process.stdin) {\n  chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));\n}\nconst payload = Buffer.concat(chunks).toString('utf8');\nif (traceFile) {\n  await mkdir(dirname(traceFile), { recursive: true });\n  await appendFile(traceFile, JSON.stringify({ timestamp: new Date().toISOString(), hook: '${hook}', nodeId: '${hook}', status: 'ok', eventType: '${eventType}', message: '${projectName}:${hook}', metadata: { payloadLength: payload.length } }) + '\\n');\n}\nconsole.log(JSON.stringify({ continue: true, hook: '${hook}' }));\n`;
 }
 
 function buildHooksConfig(project: HarnessProject) {
@@ -97,7 +99,7 @@ export async function compileClaude(project: HarnessProject, outDir: string): Pr
     );
     await writeFile(
       join(scriptsDir, 'mcp-server.mjs'),
-      `import { appendFile, mkdir } from 'node:fs/promises';\nimport { dirname } from 'node:path';\nconst traceFile = process.env.HARNESS_EDITOR_TRACE_FILE;\nif (traceFile) {\n  await mkdir(dirname(traceFile), { recursive: true });\n  await appendFile(traceFile, JSON.stringify({ timestamp: new Date().toISOString(), hook: 'MCPServer', nodeId: 'MCPServer', status: 'ok', message: '${project.manifest.name}:MCPServer' }) + '\\n');\n}\nconsole.log(JSON.stringify({ name: '${project.manifest.name}-generated', status: 'ready', mode: 'stdio' }));`
+      `import { appendFile, mkdir } from 'node:fs/promises';\nimport { dirname } from 'node:path';\nconst traceFile = process.env.HARNESS_EDITOR_TRACE_FILE;\nif (traceFile) {\n  await mkdir(dirname(traceFile), { recursive: true });\n  await appendFile(traceFile, JSON.stringify({ timestamp: new Date().toISOString(), hook: 'MCPServer', nodeId: 'MCPServer', status: 'ok', eventType: 'mcp-server', message: '${project.manifest.name}:MCPServer' }) + '\\n');\n}\nconsole.log(JSON.stringify({ name: '${project.manifest.name}-generated', status: 'ready', mode: 'stdio' }));`
     );
     generatedFiles.push(mcpConfigPath, join(scriptsDir, 'mcp-server.mjs'));
   }

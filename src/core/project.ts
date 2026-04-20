@@ -13,6 +13,10 @@ export async function writeHarnessProject(baseDir: string, project: HarnessProje
   await writeFile(join(baseDir, 'graph', 'nodes.json'), JSON.stringify(project.nodes, null, 2));
   await writeFile(join(baseDir, 'graph', 'edges.json'), JSON.stringify(project.edges, null, 2));
   await writeFile(join(baseDir, 'layout.json'), JSON.stringify(project.layout, null, 2));
+  await writeFile(join(baseDir, 'graph', 'composites.json'), JSON.stringify(project.composites, null, 2));
+  await writeFile(join(baseDir, 'custom-blocks', 'definitions.json'), JSON.stringify(project.customBlocks, null, 2));
+  await writeFile(join(baseDir, 'graph', 'registry.snapshot.json'), JSON.stringify(project.registry, null, 2));
+  await writeFile(join(baseDir, 'authoring.decisions.json'), JSON.stringify(project.authoring, null, 2));
 
   for (const skill of project.skills) {
     await writeFile(join(baseDir, 'skills', `${skill.name}.md`), skill.content);
@@ -26,6 +30,10 @@ export async function loadHarnessProject(baseDir: string): Promise<HarnessProjec
   const nodes = JSON.parse(await readFile(join(baseDir, 'graph', 'nodes.json'), 'utf8'));
   const edges = JSON.parse(await readFile(join(baseDir, 'graph', 'edges.json'), 'utf8'));
   const layout = JSON.parse(await readFile(join(baseDir, 'layout.json'), 'utf8'));
+  const composites = JSON.parse(await readFile(join(baseDir, 'graph', 'composites.json'), 'utf8'));
+  const customBlocks = JSON.parse(await readFile(join(baseDir, 'custom-blocks', 'definitions.json'), 'utf8'));
+  const registry = JSON.parse(await readFile(join(baseDir, 'graph', 'registry.snapshot.json'), 'utf8'));
+  const authoring = JSON.parse(await readFile(join(baseDir, 'authoring.decisions.json'), 'utf8'));
   const skillContent = await readFile(join(baseDir, 'skills', `${manifest.name}-skill.md`), 'utf8');
 
   return {
@@ -40,6 +48,10 @@ export async function loadHarnessProject(baseDir: string): Promise<HarnessProjec
         description: 'Generated skill',
         content: skillContent
       }
-    ]
+    ],
+    composites,
+    customBlocks,
+    registry,
+    authoring
   } satisfies HarnessProject;
 }

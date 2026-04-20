@@ -5,6 +5,8 @@ export type HookEvent =
   | 'PostToolUse'
   | 'Stop';
 
+export type RuntimeTarget = 'claude-code' | 'opencode' | 'codex';
+
 export type NodeKind =
   | HookEvent
   | 'Skill'
@@ -57,9 +59,45 @@ export interface HarnessManifest {
   name: string;
   version: string;
   description: string;
-  targetRuntime: 'claude-code';
+  targetRuntime: RuntimeTarget;
   createdAt: string;
   prompt: string;
+}
+
+export interface ConfirmationRequest {
+  id: string;
+  kind: 'risk-bearing-permission' | 'safety-policy-change' | 'destructive-runtime';
+  reason: string;
+  message: string;
+  confirmed: boolean;
+}
+
+export interface CompositeInstance {
+  id: string;
+  patternId: string;
+  label: string;
+  expandedNodeIds: string[];
+}
+
+export interface CustomBlockDefinition {
+  id: string;
+  label: string;
+  description: string;
+  opaque: true;
+  ports: PortSpec[];
+}
+
+export interface AuthoringDecision {
+  summary: string;
+  warnings: string[];
+  confirmationRequests: ConfirmationRequest[];
+  compatibleRuntimes: RuntimeTarget[];
+  traceIntent: string[];
+}
+
+export interface RegistrySnapshot {
+  blocks: RegistryBlock[];
+  composites: CompositePattern[];
 }
 
 export interface HarnessProject {
@@ -68,13 +106,17 @@ export interface HarnessProject {
   edges: GraphEdge[];
   skills: SkillFile[];
   layout: LayoutNode[];
+  composites: CompositeInstance[];
+  customBlocks: CustomBlockDefinition[];
+  registry: RegistrySnapshot;
+  authoring: AuthoringDecision;
 }
 
 export interface RegistryBlock {
   kind: NodeKind;
   description: string;
   ports: PortSpec[];
-  compatibleRuntimes: Array<'claude-code' | 'opencode' | 'codex'>;
+  compatibleRuntimes: RuntimeTarget[];
 }
 
 export interface CompositePattern {
@@ -96,11 +138,23 @@ export interface TraceEvent {
   nodeId: string;
   status: 'ok' | 'error';
   message: string;
+  eventType:
+    | 'hook-activation'
+    | 'branch-selection'
+    | 'state-transition'
+    | 'loop-iteration'
+    | 'custom-block'
+    | 'failure'
+    | 'mcp-server';
+  metadata?: Record<string, unknown>;
 }
 
 export interface SandboxRunResult {
   sandboxDir: string;
+  installDir: string;
   traceFile: string;
   htmlReport: string;
   events: TraceEvent[];
+  success: boolean;
+  failure?: TraceEvent;
 }

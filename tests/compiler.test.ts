@@ -13,5 +13,7 @@ describe('compileClaude', () => {
     expect(result.generatedFiles.some((file) => file.endsWith('plugin.json'))).toBe(true);
     expect(result.generatedFiles.some((file) => file.endsWith('hooks.json'))).toBe(true);
     expect(result.generatedFiles.some((file) => file.endsWith('SKILL.md'))).toBe(true);
+    expect(result.generatedFiles.some((file) => file.endsWith('.mcp.json'))).toBe(true);
+    expect(result.generatedFiles.some((file) => file.endsWith('mcp-server.mjs'))).toBe(true);
   });
 });

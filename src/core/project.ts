@@ -1,12 +1,130 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { HarnessProject } from './types';
+import { HOOK_BLOCK_KINDS } from './registry';
+import type {
+  CustomBlockDefinition,
+  GraphNode,
+  HarnessManifest,
+  HarnessProject,
+  RuntimeIntent,
+  SkillFile
+} from './types';
+
+const CURRENT_SCHEMA_VERSION = '0.1.0';
+
+const PROJECT_FILES = {
+  manifest: 'harness.json',
+  layout: 'layout.json',
+  runtime: 'runtime.json',
+  graphDir: 'graph',
+  nodes: join('graph', 'nodes.json'),
+  edges: join('graph', 'edges.json'),
+  composites: join('graph', 'composites.json'),
+  skillsDir: 'skills',
+  skillsIndex: join('skills', 'index.json'),
+  customBlocksDir: 'custom-blocks',
+  customBlocksIndex: join('custom-blocks', 'index.json'),
+  compilerDir: 'compiler'
+} as const;
+
+interface SkillIndexEntry extends Omit<SkillFile, 'content'> {
+  path: string;
+}
+
+function normalizeManifest(manifest: HarnessManifest): HarnessManifest {
+  return {
+    ...manifest,
+    schemaVersion: manifest.schemaVersion ?? CURRENT_SCHEMA_VERSION,
+    supportedRuntimes: manifest.supportedRuntimes ?? [manifest.targetRuntime]
+  };
+}
+
+function deriveRuntimeIntents(manifest: HarnessManifest, nodes: GraphNode[]): RuntimeIntent[] {
+  const intents: RuntimeIntent[] = [];
+
+  for (const node of nodes) {
+    if (HOOK_BLOCK_KINDS.includes(node.kind)) {
+      intents.push({
+        id: `intent:${node.id}`,
+        kind: 'hook',
+        label: node.label,
+        targetRuntime: manifest.targetRuntime,
+        sourceNodeIds: [node.id],
+        transport: 'stdio',
+        safety: 'safe'
+      });
+      continue;
+    }
+
+    if (node.kind === 'MCPServer') {
+      intents.push({
+        id: `intent:${node.id}`,
+        kind: 'mcp-server',
+        label: node.label,
+        targetRuntime: manifest.targetRuntime,
+        sourceNodeIds: [node.id],
+        transport: 'stdio',
+        safety: 'confirm'
+      });
+      continue;
+    }
+
+    if (node.kind === 'StateRead' || node.kind === 'StateWrite') {
+      intents.push({
+        id: `intent:${node.id}`,
+        kind: 'state',
+        label: node.label,
+        targetRuntime: manifest.targetRuntime,
+        sourceNodeIds: [node.id],
+        transport: 'in-memory',
+        safety: 'safe'
+      });
+      continue;
+    }
+
+    if (node.kind === 'CustomBlock') {
+      intents.push({
+        id: `intent:${node.id}`,
+        kind: 'custom-runtime',
+        label: node.label,
+        targetRuntime: manifest.targetRuntime,
+        sourceNodeIds: [node.id],
+        safety: 'confirm'
+      });
+    }
+  }
+
+  return intents;
+}
+
+function normalizeProject(project: HarnessProject): HarnessProject {
+  const manifest = normalizeManifest(project.manifest);
+  return {
+    ...project,
+    manifest,
+    composites: project.composites ?? [],
+    runtimeIntents: project.runtimeIntents ?? deriveRuntimeIntents(manifest, project.nodes),
+    customBlocks: project.customBlocks ?? []
+  };
+}
+
+async function readOptionalJson<T>(path: string): Promise<T | undefined> {
+  try {
+    return JSON.parse(await readFile(path, 'utf8')) as T;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return undefined;
+    }
+    throw error;
+  }
+}
 
 async function writeJson(path: string, value: unknown) {
   await writeFile(path, JSON.stringify(value, null, 2));
 }
 
 export async function writeHarnessProject(baseDir: string, project: HarnessProject): Promise<string> {
+  const normalizedProject = normalizeProject(project);
   await mkdir(baseDir, { recursive: true });
   await mkdir(join(baseDir, 'graph'), { recursive: true });
   await mkdir(join(baseDir, 'skills'), { recursive: true });
@@ -26,8 +144,16 @@ export async function writeHarnessProject(baseDir: string, project: HarnessProje
   await writeJson(join(baseDir, 'registry', 'composites.json'), project.registry.composites);
   await writeJson(join(baseDir, 'authoring', 'decision.json'), project.authoring);
 
-  for (const skill of project.skills) {
-    await writeFile(join(baseDir, 'skills', `${skill.name}.md`), skill.content);
+  const skillIndex: SkillIndexEntry[] = normalizedProject.skills.map((skill) => ({
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    path: skill.path ?? `${skill.name}.md`
+  }));
+  await writeFile(join(baseDir, PROJECT_FILES.skillsIndex), JSON.stringify(skillIndex, null, 2));
+
+  for (const skill of normalizedProject.skills) {
+    await writeFile(join(baseDir, PROJECT_FILES.skillsDir, skill.path ?? `${skill.name}.md`), skill.content);
   }
 
   return baseDir;

@@ -47,6 +47,7 @@ export interface SkillFile {
   name: string;
   description: string;
   content: string;
+  path?: string;
 }
 
 export interface LayoutNode {
@@ -56,6 +57,7 @@ export interface LayoutNode {
 }
 
 export interface HarnessManifest {
+  schemaVersion?: string;
   name: string;
   version: string;
   description: string;
@@ -115,6 +117,7 @@ export interface HarnessProject {
 export interface RegistryBlock {
   kind: NodeKind;
   description: string;
+  category: RegistryCategory;
   ports: PortSpec[];
   compatibleRuntimes: RuntimeTarget[];
 }
@@ -124,6 +127,7 @@ export interface CompositePattern {
   name: string;
   description: string;
   includes: NodeKind[];
+  intentKinds?: RuntimeIntentKind[];
 }
 
 export interface CompileResult {

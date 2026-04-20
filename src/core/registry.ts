@@ -50,7 +50,7 @@ export const COMPOSITE_PATTERNS: CompositePattern[] = [
   {
     id: 'boulder-continuation',
     name: 'Boulder Continuation',
-    description: 'Continue blocked work by checkpointing and re-entering the main flow',
+    description: 'Continue through blocked work by checkpointing and re-entering the main flow',
     includes: ['Condition', 'StateWrite', 'Sequence']
   },
   {
@@ -74,13 +74,13 @@ export const COMPOSITE_PATTERNS: CompositePattern[] = [
   {
     id: 'lore-memory-persist',
     name: 'Lore/Memory Persist',
-    description: 'Persist memory after successful flow completion',
+    description: 'Persist memory and lore after each successful run',
     includes: ['StateWrite', 'Skill', 'Sequence']
   },
   {
     id: 'evolutionary-seed',
     name: 'Evolutionary Seed',
-    description: 'Seed an opaque custom logic block that can evolve later',
+    description: 'Seed a harness with opaque custom logic that can evolve later',
     includes: ['CustomBlock', 'Skill', 'Sequence']
   }
 ];

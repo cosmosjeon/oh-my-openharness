@@ -20,19 +20,12 @@ function renderDetails(event: TraceRecord): string {
 }
 
 export function renderTraceHtml(projectName: string, events: TraceEvent[]): string {
-  const traceEvents = events as TraceRecord[];
-  const okCount = traceEvents.filter((event) => event.status === 'ok').length;
-  const errorCount = traceEvents.filter((event) => event.status === 'error').length;
-  const eventTypes = Array.from(new Set(traceEvents.map((event) => String(event.eventType ?? event.hook)))).sort();
-
-  const rows = traceEvents.length
-    ? traceEvents
-        .map((event) => {
-          const eventType = String(event.eventType ?? 'hook-activation');
-          return `<tr class="${event.status === 'error' ? 'is-error' : 'is-ok'}"><td>${escapeHtml(event.timestamp)}</td><td>${escapeHtml(eventType)}</td><td>${escapeHtml(event.hook)}</td><td>${escapeHtml(event.nodeId)}</td><td>${escapeHtml(event.status)}</td><td>${escapeHtml(event.message)}</td><td>${renderDetails(event)}</td></tr>`;
-        })
-        .join('')
-    : '<tr><td colspan="7">No trace events captured.</td></tr>';
+  const rows = events
+    .map(
+      (event) =>
+        `<tr><td>${event.timestamp}</td><td>${event.eventType}</td><td>${event.hook}</td><td>${event.nodeId}</td><td>${event.status}</td><td>${event.message}</td></tr>`
+    )
+    .join('');
 
   return `<!doctype html>
 <html>
@@ -81,7 +74,7 @@ export function renderTraceHtml(projectName: string, events: TraceEvent[]): stri
 
     <table>
       <thead>
-        <tr><th>Timestamp</th><th>Event Type</th><th>Hook</th><th>Node</th><th>Status</th><th>Message</th><th>Details</th></tr>
+        <tr><th>Timestamp</th><th>Event</th><th>Hook</th><th>Node</th><th>Status</th><th>Message</th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>

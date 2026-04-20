@@ -15,17 +15,26 @@ function escapeHtml(value: unknown): string {
 
 function renderDetails(event: TraceRecord): string {
   const details = Object.fromEntries(Object.entries(event).filter(([key, value]) => !DEFAULT_COLUMNS.has(key) && value !== undefined && value !== ''));
-  if (Object.keys(details).length === 0) return '<span class="muted">—</span>';
+  if (Object.keys(details).length === 0) {
+    return '<span class="muted">—</span>';
+  }
   return `<pre>${escapeHtml(JSON.stringify(details, null, 2))}</pre>`;
 }
 
 export function renderTraceHtml(projectName: string, events: TraceEvent[]): string {
-  const rows = events
-    .map(
-      (event) =>
-        `<tr><td>${event.timestamp}</td><td>${event.eventType}</td><td>${event.hook}</td><td>${event.nodeId}</td><td>${event.status}</td><td>${event.message}</td></tr>`
-    )
-    .join('');
+  const traceEvents = events as TraceRecord[];
+  const okCount = traceEvents.filter((event) => event.status === 'ok').length;
+  const errorCount = traceEvents.filter((event) => event.status === 'error').length;
+  const eventTypes = Array.from(new Set(traceEvents.map((event) => String(event.eventType ?? event.hook)))).sort();
+
+  const rows = traceEvents.length
+    ? traceEvents
+        .map((event) => {
+          const eventType = String(event.eventType ?? 'hook');
+          return `<tr class="${event.status === 'error' ? 'is-error' : 'is-ok'}"><td>${escapeHtml(event.timestamp)}</td><td>${escapeHtml(eventType)}</td><td>${escapeHtml(event.hook)}</td><td>${escapeHtml(event.nodeId)}</td><td>${escapeHtml(event.status)}</td><td>${escapeHtml(event.message)}</td><td>${renderDetails(event)}</td></tr>`;
+        })
+        .join('')
+    : '<tr><td colspan="7">No trace events captured.</td></tr>';
 
   return `<!doctype html>
 <html>
@@ -62,9 +71,18 @@ export function renderTraceHtml(projectName: string, events: TraceEvent[]): stri
     </div>
 
     <section class="summary">
-      <div class="card"><span>Total events</span><strong>${traceEvents.length}</strong></div>
-      <div class="card"><span>Successful events</span><strong>${okCount}</strong></div>
-      <div class="card"><span>Error events</span><strong>${errorCount}</strong></div>
+      <div class="card">
+        <span>Total events</span>
+        <strong>${traceEvents.length}</strong>
+      </div>
+      <div class="card">
+        <span>Successful events</span>
+        <strong>${okCount}</strong>
+      </div>
+      <div class="card">
+        <span>Error events</span>
+        <strong>${errorCount}</strong>
+      </div>
     </section>
 
     <section>
@@ -74,7 +92,7 @@ export function renderTraceHtml(projectName: string, events: TraceEvent[]): stri
 
     <table>
       <thead>
-        <tr><th>Timestamp</th><th>Event</th><th>Hook</th><th>Node</th><th>Status</th><th>Message</th></tr>
+        <tr><th>Timestamp</th><th>Event Type</th><th>Hook</th><th>Node</th><th>Status</th><th>Message</th><th>Details</th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>

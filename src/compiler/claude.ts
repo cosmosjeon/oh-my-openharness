@@ -4,28 +4,156 @@ import type { CompileResult, HarnessProject, HookEvent, TraceEvent } from '../co
 
 const HOOK_EVENTS: HookEvent[] = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop'];
 
-function traceEventTemplate(
-  hook: HookEvent,
-  projectName: string,
-  status: 'ok' | 'error',
-  eventType: TraceEvent['eventType'],
-  message: string,
-  metadata: Record<string, unknown> = {}
-) {
-  return `JSON.stringify({ timestamp: new Date().toISOString(), hook: '${hook}', nodeId: '${hook}', status: '${status}', eventType: '${eventType}', message: ${JSON.stringify(
-    message
-  )}, metadata: ${JSON.stringify(metadata)} })`;
+function scriptForHook(hook: HookEvent, project: HarnessProject): string {
+  const compiledProject = JSON.stringify({
+    name: project.manifest.name,
+    prompt: project.manifest.prompt,
+    nodes: project.nodes.map(({ id, kind, label }) => ({ id, kind, label }))
+  });
+
+  return `import { appendFile, mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
+
+const traceFile = process.env.HARNESS_EDITOR_TRACE_FILE;
+const project = ${compiledProject};
+
+async function emitEvents(events) {
+  if (!traceFile || events.length === 0) {
+    return;
+  }
+  await mkdir(dirname(traceFile), { recursive: true });
+  await appendFile(traceFile, events.map((event) => JSON.stringify(event)).join('\\n') + '\\n');
 }
 
-function scriptForHook(hook: HookEvent, projectName: string): string {
-  const successEvent = traceEventTemplate(hook, projectName, 'ok', 'hook-activation', `${projectName}:${hook}`, {
-    source: 'generated-hook'
-  });
-  const failureEvent = traceEventTemplate(hook, projectName, 'error', 'failure', `${projectName}:${hook}:failed`, {
-    source: 'generated-hook'
-  });
+function summarizePayload(payload) {
+  return payload.length > 180 ? payload.slice(0, 177) + '...' : payload;
+}
 
-  return `import { appendFile, mkdir } from 'node:fs/promises';\nimport { dirname } from 'node:path';\n\nconst hook = '${hook}';\nconst traceFile = process.env.HARNESS_EDITOR_TRACE_FILE;\nconst failHook = process.env.HARNESS_EDITOR_FAIL_HOOK;\nconst chunks = [];\nfor await (const chunk of process.stdin) {\n  chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));\n}\nconst payload = Buffer.concat(chunks).toString('utf8');\nif (traceFile) {\n  await mkdir(dirname(traceFile), { recursive: true });\n  if (failHook === hook) {\n    await appendFile(traceFile, ${failureEvent} + '\\n');\n    console.error(JSON.stringify({ continue: false, hook, error: 'Injected failure for sandbox validation' }));\n    process.exit(1);\n  }\n  await appendFile(traceFile, ${successEvent} + '\\n');\n}\nconsole.log(JSON.stringify({ continue: true, hook, payloadLength: payload.length }));\n`;
+function buildTraceEvents(payload, parsedPayload) {
+  const timestamp = new Date().toISOString();
+  const events = [
+    {
+      timestamp,
+      eventType: 'hook',
+      hook: '${hook}',
+      nodeId: '${hook}',
+      status: 'ok',
+      message: project.name + ':${hook}',
+      payloadPreview: summarizePayload(payload)
+    }
+  ];
+
+  for (const node of project.nodes) {
+    if (node.kind === 'Skill' && '${hook}' === 'UserPromptSubmit') {
+      events.push({
+        timestamp,
+        eventType: 'node_activation',
+        hook: '${hook}',
+        nodeId: node.id,
+        status: 'ok',
+        message: 'Skill activated: ' + node.label,
+        nodeKind: node.kind
+      });
+    }
+
+    if (node.kind === 'Permission' && '${hook}' === 'UserPromptSubmit') {
+      events.push({
+        timestamp,
+        eventType: 'branch',
+        hook: '${hook}',
+        nodeId: node.id,
+        status: 'ok',
+        message: 'Permission gate requires approval before risky changes',
+        branch: 'approval_required',
+        nodeKind: node.kind
+      });
+    }
+
+    if (node.kind === 'Loop' && '${hook}' === 'UserPromptSubmit') {
+      events.push({
+        timestamp,
+        eventType: 'loop_iteration',
+        hook: '${hook}',
+        nodeId: node.id,
+        status: 'ok',
+        message: 'Loop entered for representative sandbox replay',
+        iteration: 1,
+        nodeKind: node.kind
+      });
+    }
+
+    if (node.kind === 'StateWrite' && '${hook}' === 'Stop') {
+      events.push({
+        timestamp,
+        eventType: 'state_mutation',
+        hook: '${hook}',
+        nodeId: node.id,
+        status: 'ok',
+        message: 'State persisted for future GUI inspection',
+        stateKey: 'project.prompt',
+        valuePreview: summarizePayload(String(parsedPayload?.prompt ?? parsedPayload?.reason ?? payload)),
+        nodeKind: node.kind
+      });
+    }
+
+    if (node.kind === 'Sequence' && '${hook}' === 'SessionStart') {
+      events.push({
+        timestamp,
+        eventType: 'node_activation',
+        hook: '${hook}',
+        nodeId: node.id,
+        status: 'ok',
+        message: 'Primary flow prepared',
+        nodeKind: node.kind
+      });
+    }
+
+    if (node.kind === 'CustomBlock' && '${hook}' === 'UserPromptSubmit') {
+      events.push({
+        timestamp,
+        eventType: 'node_activation',
+        hook: '${hook}',
+        nodeId: node.id,
+        status: 'ok',
+        message: 'Custom runtime block ready for downstream compilers',
+        nodeKind: node.kind
+      });
+    }
+  }
+
+  return events;
+}
+
+const chunks = [];
+for await (const chunk of process.stdin) {
+  chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+}
+const payload = Buffer.concat(chunks).toString('utf8');
+let parsedPayload = null;
+try {
+  parsedPayload = payload ? JSON.parse(payload) : null;
+} catch {
+  parsedPayload = { raw: payload };
+}
+const events = buildTraceEvents(payload, parsedPayload);
+const shouldFail = Boolean(parsedPayload && typeof parsedPayload === 'object' && parsedPayload.forceFailure === true) || project.prompt.includes('__FORCE_SANDBOX_FAILURE__');
+if (shouldFail) {
+  events.push({
+    timestamp: new Date().toISOString(),
+    eventType: 'failure',
+    hook: '${hook}',
+    nodeId: '${hook}',
+    status: 'error',
+    message: 'Forced sandbox failure for trace/error surfacing',
+    payloadPreview: summarizePayload(payload)
+  });
+  await emitEvents(events);
+  console.error('Forced sandbox failure for trace/error surfacing');
+  process.exit(1);
+}
+await emitEvents(events);
+console.log(JSON.stringify({ continue: true, hook: '${hook}', traceCount: events.length }));
+`;
 }
 
 function buildHooksConfig(project: HarnessProject) {
@@ -100,9 +228,8 @@ export async function compileClaude(project: HarnessProject, outDir: string): Pr
 
   const pluginJsonPath = join(pluginRoot, 'plugin.json');
   const hookJsonPath = join(hooksDir, 'hooks.json');
-  const mcpConfigPath = join(outDir, '.mcp.json');
-  const traceSchemaPath = join(outDir, 'trace-schema.json');
-  const generatedFiles = [pluginJsonPath, hookJsonPath, traceSchemaPath];
+  const mcpConfigPath = join(pluginRoot, '.mcp.json');
+  const generatedFiles = [pluginJsonPath, hookJsonPath];
   const hasMcpServer = project.nodes.some((node) => node.kind === 'MCPServer');
 
   await writeFile(
@@ -113,8 +240,7 @@ export async function compileClaude(project: HarnessProject, outDir: string): Pr
         version: project.manifest.version,
         description: project.manifest.description,
         license: 'MIT',
-        skills: './skills/',
-        hooks: './hooks/hooks.json',
+        skills: './skills',
         ...(hasMcpServer ? { mcpServers: './.mcp.json' } : {})
       },
       null,
@@ -163,11 +289,12 @@ export async function compileClaude(project: HarnessProject, outDir: string): Pr
         2
       )
     );
+    const mcpServerPath = join(scriptsDir, 'mcp-server.mjs');
     await writeFile(
-      join(scriptsDir, 'mcp-server.mjs'),
-      `import { appendFile, mkdir } from 'node:fs/promises';\nimport { dirname } from 'node:path';\nconst traceFile = process.env.HARNESS_EDITOR_TRACE_FILE;\nif (traceFile) {\n  await mkdir(dirname(traceFile), { recursive: true });\n  await appendFile(traceFile, JSON.stringify({ timestamp: new Date().toISOString(), hook: 'MCPServer', nodeId: 'MCPServer', status: 'ok', eventType: 'mcp-server', message: '${project.manifest.name}:MCPServer', metadata: { source: 'generated-mcp' } }) + '\\n');\n}\nconsole.log(JSON.stringify({ name: '${project.manifest.name}-generated', status: 'ready', mode: 'stdio' }));`
+      mcpServerPath,
+      `import { appendFile, mkdir } from 'node:fs/promises';\nimport { dirname } from 'node:path';\nconst traceFile = process.env.HARNESS_EDITOR_TRACE_FILE;\nconst event = { timestamp: new Date().toISOString(), eventType: 'runtime_ready', hook: 'MCPServer', nodeId: 'mcp-server', status: 'ok', message: '${project.manifest.name}:MCPServer', serverName: '${project.manifest.name}-generated', sandboxDir: process.env.HARNESS_EDITOR_SANDBOX_DIR ?? null };\nif (traceFile) {\n  await mkdir(dirname(traceFile), { recursive: true });\n  await appendFile(traceFile, JSON.stringify(event) + '\\n');\n}\nconsole.log(JSON.stringify({ name: '${project.manifest.name}-generated', status: 'ready', mode: 'stdio' }));`
     );
-    generatedFiles.push(mcpConfigPath, join(scriptsDir, 'mcp-server.mjs'));
+    generatedFiles.push(mcpConfigPath, mcpServerPath);
   }
 
   return { outDir, pluginRoot, generatedFiles };

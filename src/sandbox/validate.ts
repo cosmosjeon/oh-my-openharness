@@ -1,10 +1,10 @@
-import { access, cp, mkdir, mkdtemp, readFile, writeFile, appendFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { loadHarnessProject } from '../core/project';
-import type { HarnessProject, SandboxRunResult, TraceEvent } from '../core/types';
+import { dirname, join, resolve } from 'node:path';
 import { compileClaude } from '../compiler/claude';
+import { loadHarnessProject } from '../core/project';
+import type { SandboxRunResult, TraceEvent } from '../core/types';
 import { renderTraceHtml } from '../web/report';
 
 const SAMPLE_PAYLOADS: Record<string, string> = {
@@ -15,188 +15,74 @@ const SAMPLE_PAYLOADS: Record<string, string> = {
   Stop: JSON.stringify({ reason: 'done' })
 };
 
-export interface ValidateProjectOptions {
-  outDir?: string;
-  failHook?: string;
+interface HookCommandEntry {
+  type: string;
+  command: string;
+  timeout: number;
 }
 
-async function appendTrace(traceFile: string, event: TraceEvent) {
-  await appendFile(traceFile, `${JSON.stringify(event)}\n`);
+interface HookConfigFile {
+  hooks?: Record<string, Array<{ matcher: string; hooks: HookCommandEntry[] }>>;
 }
 
-function now() {
-  return new Date().toISOString();
+interface PluginManifest {
+  mcpServers?: string;
 }
 
-function createSyntheticEvents(project: HarnessProject): TraceEvent[] {
-  const events: TraceEvent[] = [];
-
-  if (project.nodes.some((node) => node.kind === 'Permission')) {
-    events.push({
-      timestamp: now(),
-      hook: 'UserPromptSubmit',
-      nodeId: 'permission-gate',
-      status: 'ok',
-      eventType: 'branch-selection',
-      message: 'Permission gate chose the safe branch',
-      metadata: { branch: 'safe-default' }
-    });
-  }
-
-  if (project.nodes.some((node) => node.kind === 'StateRead')) {
-    events.push({
-      timestamp: now(),
-      hook: 'SessionStart',
-      nodeId: 'state-read',
-      status: 'ok',
-      eventType: 'state-transition',
-      message: 'Loaded previous harness state',
-      metadata: { stateKey: 'harness.session' }
-    });
-  }
-
-  if (project.nodes.some((node) => node.kind === 'StateWrite')) {
-    events.push({
-      timestamp: now(),
-      hook: 'PostToolUse',
-      nodeId: 'state-write',
-      status: 'ok',
-      eventType: 'state-transition',
-      message: 'Persisted harness state',
-      metadata: { stateKey: 'harness.session' }
-    });
-  }
-
-  if (project.nodes.some((node) => node.kind === 'Loop')) {
-    events.push({
-      timestamp: now(),
-      hook: 'PostToolUse',
-      nodeId: 'review-loop',
-      status: 'ok',
-      eventType: 'loop-iteration',
-      message: 'Review loop completed iteration 1',
-      metadata: { iteration: 1 }
-    });
-  }
-
-  for (const customBlock of project.customBlocks) {
-    events.push({
-      timestamp: now(),
-      hook: 'PostToolUse',
-      nodeId: 'custom-block',
-      status: 'ok',
-      eventType: 'custom-block',
-      message: `Executed opaque custom block ${customBlock.label}`,
-      metadata: { blockId: customBlock.id }
-    });
-  }
-
-  return events;
+interface McpConfigFile {
+  mcpServers?: Record<string, { command: string; args?: string[] }>;
 }
 
-function sandboxEnv(baseEnv: NodeJS.ProcessEnv, sandboxDir: string, traceFile: string, failHook?: string) {
+async function appendTraceEvent(traceFile: string, event: Record<string, unknown>) {
+  await mkdir(dirname(traceFile), { recursive: true });
+  await appendFile(traceFile, JSON.stringify(event) + '\n');
+}
+
+async function readTraceEvents(traceFile: string): Promise<TraceEvent[]> {
+  try {
+    const rawTrace = await readFile(traceFile, 'utf8');
+    return rawTrace
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as TraceEvent);
+  } catch {
+    return [];
+  }
+}
+
+async function buildSandboxEnv(sandboxDir: string, pluginRoot: string, traceFile: string) {
   const homeDir = join(sandboxDir, 'home');
   const configDir = join(sandboxDir, 'config');
+  const dataDir = join(sandboxDir, 'data');
   const cacheDir = join(sandboxDir, 'cache');
+  const claudeConfigDir = join(sandboxDir, 'claude-config');
+  await Promise.all([
+    mkdir(homeDir, { recursive: true }),
+    mkdir(configDir, { recursive: true }),
+    mkdir(dataDir, { recursive: true }),
+    mkdir(cacheDir, { recursive: true }),
+    mkdir(claudeConfigDir, { recursive: true })
+  ]);
 
   return {
-    ...baseEnv,
+    ...process.env,
     HOME: homeDir,
     XDG_CONFIG_HOME: configDir,
+    XDG_DATA_HOME: dataDir,
     XDG_CACHE_HOME: cacheDir,
-    HARNESS_EDITOR_TRACE_FILE: traceFile,
-    ...(failHook ? { HARNESS_EDITOR_FAIL_HOOK: failHook } : {})
+    CLAUDE_CONFIG_DIR: claudeConfigDir,
+    CLAUDE_PLUGIN_ROOT: pluginRoot,
+    HARNESS_EDITOR_SANDBOX_DIR: sandboxDir,
+    HARNESS_EDITOR_TRACE_FILE: traceFile
   };
 }
 
-async function runHooksFromConfig(installDir: string, traceFile: string, failHook: string | undefined) {
-  const hooksConfig = JSON.parse(await readFile(join(installDir, 'hooks', 'hooks.json'), 'utf8')) as {
-    hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
-  };
-
-  let failure: TraceEvent | undefined;
-  for (const [hook, payload] of Object.entries(SAMPLE_PAYLOADS)) {
-    const hookGroups = hooksConfig.hooks[hook] ?? [];
-    for (const group of hookGroups) {
-      for (const hookCommand of group.hooks) {
-        const result = spawnSync(hookCommand.command, {
-          shell: true,
-          cwd: installDir,
-          env: {
-            ...sandboxEnv(process.env, installDir, traceFile, failHook),
-            CLAUDE_PLUGIN_ROOT: installDir
-          },
-          input: payload,
-          encoding: 'utf8'
-        });
-
-        if (result.status !== 0) {
-          failure = {
-            timestamp: now(),
-            hook,
-            nodeId: hook,
-            status: 'error',
-            eventType: 'failure',
-            message: `Sandbox hook failed for ${hook}`,
-            metadata: {
-              stdout: result.stdout,
-              stderr: result.stderr
-            }
-          };
-          await appendTrace(traceFile, failure);
-          return failure;
-        }
-      }
-    }
-  }
-
-  return failure;
+function formatFailureOutput(stdout: string, stderr: string): string {
+  return [stderr.trim(), stdout.trim()].filter(Boolean).join(' | ');
 }
 
-async function runMcpServerIfPresent(installDir: string, traceFile: string, failHook: string | undefined) {
-  const mcpConfigPath = join(installDir, '.mcp.json');
-  try {
-    await access(mcpConfigPath);
-  } catch {
-    return undefined;
-  }
-
-  const mcpConfig = JSON.parse(await readFile(mcpConfigPath, 'utf8')) as {
-    mcpServers: Record<string, { command: string; args: string[] }>;
-  };
-  const [server] = Object.values(mcpConfig.mcpServers);
-  if (!server) return undefined;
-
-  const result = spawnSync(server.command, server.args, {
-    cwd: installDir,
-    env: {
-      ...sandboxEnv(process.env, installDir, traceFile, failHook),
-      CLAUDE_PLUGIN_ROOT: installDir
-    },
-    encoding: 'utf8'
-  });
-
-  if (result.status !== 0) {
-    const failure: TraceEvent = {
-      timestamp: now(),
-      hook: 'MCPServer',
-      nodeId: 'MCPServer',
-      status: 'error',
-      eventType: 'failure',
-      message: 'Sandbox MCP server failed',
-      metadata: {
-        stdout: result.stdout,
-        stderr: result.stderr
-      }
-    };
-    await appendTrace(traceFile, failure);
-    return failure;
-  }
-
-  return undefined;
-}
-
-export async function validateProject(projectDir: string, options: ValidateProjectOptions = {}): Promise<SandboxRunResult> {
+export async function validateProject(projectDir: string, outDir?: string): Promise<SandboxRunResult> {
   const sandboxDir = await mkdtemp(join(tmpdir(), 'harness-editor-'));
   const compileDir = options.outDir ?? join(sandboxDir, 'compiled');
   const installDir = join(sandboxDir, 'install');
@@ -206,25 +92,78 @@ export async function validateProject(projectDir: string, options: ValidateProje
   await writeFile(traceFile, '');
 
   const project = await loadHarnessProject(projectDir);
-  const unresolvedConfirmations = project.authoring.confirmationRequests.filter((request) => !request.confirmed);
-  if (unresolvedConfirmations.length > 0) {
-    throw new Error(
-      `Cannot validate project with unresolved confirmations: ${unresolvedConfirmations.map((item) => item.id).join(', ')}`
-    );
-  }
+  const compileResult = await compileClaude(project, compileDir);
+  const traceFile = join(sandboxDir, 'trace.jsonl');
+  const htmlReport = join(sandboxDir, 'trace-report.html');
+  const sandboxEnv = await buildSandboxEnv(sandboxDir, compileResult.pluginRoot, traceFile);
 
-  await compileClaude(project, compileDir);
-  await cp(compileDir, installDir, { recursive: true });
+  let failure: Error | null = null;
+  let failureContext = 'sandbox-bootstrap';
 
-  let failure = await runHooksFromConfig(installDir, traceFile, options.failHook);
-  if (!failure) {
-    failure = await runMcpServerIfPresent(installDir, traceFile, options.failHook);
-  }
-
-  if (!failure) {
-    for (const event of createSyntheticEvents(project)) {
-      await appendTrace(traceFile, event);
+  try {
+    const hooksPath = join(compileResult.pluginRoot, 'hooks', 'hooks.json');
+    const hookConfig = JSON.parse(await readFile(hooksPath, 'utf8')) as HookConfigFile;
+    for (const [hook, payload] of Object.entries(SAMPLE_PAYLOADS)) {
+      const commands = hookConfig.hooks?.[hook]?.flatMap((entry) => entry.hooks) ?? [];
+      for (const commandEntry of commands) {
+        failureContext = `hook:${hook}`;
+        const result = spawnSync('sh', ['-lc', commandEntry.command], {
+          cwd: compileResult.pluginRoot,
+          env: sandboxEnv,
+          input: payload,
+          encoding: 'utf8'
+        });
+        if (result.status !== 0) {
+          await appendTraceEvent(traceFile, {
+            timestamp: new Date().toISOString(),
+            eventType: 'failure',
+            hook,
+            nodeId: hook,
+            status: 'error',
+            message: `Hook command failed for ${hook}`,
+            details: formatFailureOutput(result.stdout, result.stderr)
+          });
+          throw new Error(`Sandbox hook failed for ${hook}: ${formatFailureOutput(result.stdout, result.stderr)}`);
+        }
+      }
     }
+
+    const pluginManifestPath = join(compileResult.pluginRoot, 'plugin.json');
+    const pluginManifest = JSON.parse(await readFile(pluginManifestPath, 'utf8')) as PluginManifest;
+    if (pluginManifest.mcpServers) {
+      const mcpConfigPath = resolve(compileResult.pluginRoot, pluginManifest.mcpServers);
+      const mcpConfig = JSON.parse(await readFile(mcpConfigPath, 'utf8')) as McpConfigFile;
+      for (const [name, server] of Object.entries(mcpConfig.mcpServers ?? {})) {
+        failureContext = `mcp:${name}`;
+        const result = spawnSync(server.command, server.args ?? [], {
+          cwd: compileResult.pluginRoot,
+          env: sandboxEnv,
+          encoding: 'utf8'
+        });
+        if (result.status !== 0) {
+          await appendTraceEvent(traceFile, {
+            timestamp: new Date().toISOString(),
+            eventType: 'failure',
+            hook: 'MCPServer',
+            nodeId: name,
+            status: 'error',
+            message: `Sandbox MCP server failed for ${name}`,
+            details: formatFailureOutput(result.stdout, result.stderr)
+          });
+          throw new Error(`Sandbox MCP server failed for ${name}: ${formatFailureOutput(result.stdout, result.stderr)}`);
+        }
+      }
+    }
+  } catch (error) {
+    failure = error instanceof Error ? error : new Error(String(error));
+    await appendTraceEvent(traceFile, {
+      timestamp: new Date().toISOString(),
+      eventType: 'failure',
+      hook: 'Sandbox',
+      nodeId: failureContext,
+      status: 'error',
+      message: failure.message
+    });
   }
 
   let events = await readTraceEvents(traceFile);
@@ -243,13 +182,9 @@ export async function validateProject(projectDir: string, options: ValidateProje
 
   await writeFile(htmlReport, renderTraceHtml(project.manifest.name, events));
 
-  return {
-    sandboxDir,
-    installDir,
-    traceFile,
-    htmlReport,
-    events,
-    success: !failure,
-    ...(failure ? { failure } : {})
-  };
+  if (failure) {
+    throw new Error(`${failure.message}\nTrace report: ${htmlReport}\nTrace log: ${traceFile}`);
+  }
+
+  return { sandboxDir, traceFile, htmlReport, events };
 }

@@ -2,28 +2,29 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyRiskConfirmations, generateHarnessProject } from '../src/core/generator';
 import { compileClaude } from '../src/compiler/claude';
 import { generateHarnessProject } from '../src/core/generator';
 
 describe('compileClaude', () => {
-  test('writes a Claude plugin package with hooks, skills, and trace schema', async () => {
+  test('writes a Claude plugin package with colocated hooks, skills, and scripts', async () => {
     const out = await mkdtemp(join(tmpdir(), 'harness-editor-compile-'));
-    const project = applyRiskConfirmations(
-      generateHarnessProject('compile-sample', 'Create a review harness with approval and mcp server'),
-      true
-    );
+    const project = generateHarnessProject('compile-sample', 'Create a review harness with approval, state memory, and mcp server');
     const result = await compileClaude(project, out);
-    expect(result.generatedFiles.some((file) => file.endsWith('plugin.json'))).toBe(true);
-    expect(result.generatedFiles.some((file) => file.endsWith('hooks.json'))).toBe(true);
-    expect(result.generatedFiles.some((file) => file.endsWith('SKILL.md'))).toBe(true);
-    expect(result.generatedFiles.some((file) => file.endsWith('trace-schema.json'))).toBe(true);
 
-    const plugin = JSON.parse(await readFile(join(out, '.claude-plugin', 'plugin.json'), 'utf8')) as {
-      hooks: string;
-      mcpServers?: string;
+    const pluginJsonPath = join(out, '.claude-plugin', 'plugin.json');
+    const hooksJsonPath = join(out, '.claude-plugin', 'hooks', 'hooks.json');
+    const pluginJson = JSON.parse(await readFile(pluginJsonPath, 'utf8')) as { skills: string; mcpServers?: string };
+    const hooksJson = JSON.parse(await readFile(hooksJsonPath, 'utf8')) as {
+      hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>>;
     };
-    expect(plugin.hooks).toBe('./hooks/hooks.json');
-    expect(plugin.mcpServers).toBe('./.mcp.json');
+
+    expect(result.generatedFiles.some((file) => file === pluginJsonPath)).toBe(true);
+    expect(result.generatedFiles.some((file) => file === hooksJsonPath)).toBe(true);
+    expect(result.generatedFiles.some((file) => file.endsWith('.claude-plugin/skills/compile-sample-skill/SKILL.md'))).toBe(true);
+    expect(result.generatedFiles.some((file) => file.endsWith('.claude-plugin/scripts/SessionStart.mjs'))).toBe(true);
+    expect(result.generatedFiles.some((file) => file.endsWith('.claude-plugin/.mcp.json'))).toBe(true);
+    expect(pluginJson.skills).toBe('./skills');
+    expect(pluginJson.mcpServers).toBe('./.mcp.json');
+    expect(hooksJson.hooks.SessionStart[0]?.hooks[0]?.command).toContain('$CLAUDE_PLUGIN_ROOT');
   });
 });

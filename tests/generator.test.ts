@@ -62,4 +62,28 @@ describe('generateHarnessProject', () => {
     expect(project.edges).toHaveLength(project.nodes.length - 1);
     expect(project.layout.map((node) => node.id)).toEqual(ids);
   });
+
+  test('captures authoring decisions from prompt cues while preserving the baseline flow', () => {
+    const project = generateHarnessProject(
+      'authoring-decisions',
+      'Create a custom novel harness with retry loop, state memory, and approval flow'
+    );
+    const ids = project.nodes.map((node) => node.id);
+    const kinds = project.nodes.map((node) => node.kind);
+
+    expect(ids.slice(0, 5)).toEqual(['session-start', 'user-submit', 'main-skill', 'sequence-main', 'stop']);
+    expect(kinds).toEqual([
+      'SessionStart',
+      'UserPromptSubmit',
+      'Skill',
+      'Sequence',
+      'Stop',
+      'Permission',
+      'Loop',
+      'StateWrite',
+      'CustomBlock'
+    ]);
+    expect(project.edges).toHaveLength(project.nodes.length - 1);
+    expect(project.layout.map((node) => node.id)).toEqual(ids);
+  });
 });

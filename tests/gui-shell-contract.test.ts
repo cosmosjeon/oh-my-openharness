@@ -1,0 +1,161 @@
+import { describe, expect, test } from 'bun:test';
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { applyRiskConfirmations, generateHarnessProject } from '../src/core/generator';
+import { loadHarnessProject, writeHarnessProject } from '../src/core/project';
+import { compileClaude } from '../src/compiler/claude';
+import { validateProject } from '../src/sandbox/validate';
+import { renderTraceHtml } from '../src/web/report';
+import type { GraphEdge, GraphNode, LayoutNode, TraceEvent } from '../src/core/types';
+
+const RICH_PROMPT = 'Create a review harness with approvals, state memory, MCP server support, and retry loop';
+
+async function buildWrittenProject(name: string, prompt = RICH_PROMPT): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'harness-editor-gui-shell-'));
+  const projectDir = join(root, name);
+  const project = applyRiskConfirmations(generateHarnessProject(name, prompt), true);
+  await writeHarnessProject(projectDir, project);
+  return projectDir;
+}
+
+describe('GUI shell contract: loading canonical project data', () => {
+  test('loadHarnessProject exposes a renderable graph (nodes, edges, layout) for a viewer', async () => {
+    const projectDir = await buildWrittenProject('gui-shell-load');
+    const loaded = await loadHarnessProject(projectDir);
+
+    expect(loaded.nodes.length).toBeGreaterThan(0);
+    expect(loaded.edges.length).toBeGreaterThan(0);
+    expect(loaded.layout.length).toBe(loaded.nodes.length);
+
+    const nodeIds = new Set(loaded.nodes.map((node: GraphNode) => node.id));
+    for (const edge of loaded.edges as GraphEdge[]) {
+      expect(nodeIds.has(edge.from)).toBe(true);
+      expect(nodeIds.has(edge.to)).toBe(true);
+    }
+
+    const layoutIds = new Set(loaded.layout.map((position: LayoutNode) => position.id));
+    for (const node of loaded.nodes) expect(layoutIds.has(node.id)).toBe(true);
+    for (const position of loaded.layout as LayoutNode[]) {
+      expect(Number.isFinite(position.x)).toBe(true);
+      expect(Number.isFinite(position.y)).toBe(true);
+    }
+
+    expect(loaded.manifest.schemaVersion).toBeDefined();
+    expect(loaded.manifest.targetRuntime).toBe('claude-code');
+    expect(loaded.authoring.compatibleRuntimes.length).toBeGreaterThan(0);
+    expect(loaded.registry.blocks.length).toBeGreaterThan(0);
+    expect((loaded.runtimeIntents ?? []).length).toBeGreaterThan(0);
+  });
+
+  test('layout-only changes do not mutate the semantic graph (GUI drag-and-drop safety)', async () => {
+    const projectDir = await buildWrittenProject('gui-shell-layout');
+    const loaded = await loadHarnessProject(projectDir);
+
+    const shifted = {
+      ...loaded,
+      layout: loaded.layout.map((position: LayoutNode) => ({ ...position, x: position.x + 42, y: position.y + 17 }))
+    };
+    await writeHarnessProject(projectDir, shifted);
+    const reloaded = await loadHarnessProject(projectDir);
+
+    expect(reloaded.nodes).toEqual(loaded.nodes);
+    expect(reloaded.edges).toEqual(loaded.edges);
+    expect(reloaded.layout).not.toEqual(loaded.layout);
+    expect(reloaded.layout.length).toBe(loaded.layout.length);
+  });
+});
+
+describe('GUI shell contract: runtime trace and error surfaces', () => {
+  test('sandbox trace events carry every field a GUI trace panel needs to render rows', async () => {
+    const projectDir = await buildWrittenProject('gui-shell-trace');
+    const result = await validateProject(projectDir);
+
+    expect(result.success).toBe(true);
+    expect(result.events.length).toBeGreaterThan(0);
+
+    for (const event of result.events as TraceEvent[]) {
+      expect(typeof event.timestamp).toBe('string');
+      expect(Number.isNaN(Date.parse(event.timestamp))).toBe(false);
+      expect(typeof event.hook).toBe('string');
+      expect(typeof event.nodeId).toBe('string');
+      expect(typeof event.message).toBe('string');
+      expect(['ok', 'error']).toContain(event.status);
+      expect([
+        'hook-activation',
+        'branch-selection',
+        'state-transition',
+        'loop-iteration',
+        'custom-block',
+        'failure',
+        'mcp-server'
+      ]).toContain(event.eventType);
+    }
+
+    const html = await readFile(result.htmlReport, 'utf8');
+    expect(html).toContain('Runtime Trace');
+    expect(html).toContain('Event Type');
+    expect(html).toContain('Total events');
+  });
+
+  test('forced failure exposes an error event the GUI can highlight', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'harness-editor-gui-shell-fail-'));
+    const projectDir = join(root, 'gui-shell-fail');
+    const project = applyRiskConfirmations(generateHarnessProject('gui-shell-fail', 'Create a harness __FORCE_SANDBOX_FAILURE__'), true);
+    await writeHarnessProject(projectDir, project);
+
+    const result = await validateProject(projectDir, { failHook: 'UserPromptSubmit' });
+    expect(result.success).toBe(false);
+    expect(result.failure).toBeDefined();
+    expect(result.failure?.status).toBe('error');
+    expect(result.events.some((event) => event.status === 'error')).toBe(true);
+
+    const html = await readFile(result.htmlReport, 'utf8');
+    expect(html).toContain('is-error');
+    expect(html).toContain('Error events');
+    expect(html).toContain('Hook command failed');
+  });
+
+  test('renderTraceHtml escapes user-controlled trace data (GUI XSS guard)', () => {
+    const hostile: TraceEvent[] = [
+      {
+        timestamp: '2026-04-21T00:00:00.000Z',
+        hook: 'PreToolUse',
+        nodeId: 'node-<script>',
+        status: 'error',
+        message: '<img src=x onerror=alert(1)>',
+        eventType: 'failure',
+        metadata: { payload: '"><svg/onload=alert(2)>' }
+      }
+    ];
+    const html = renderTraceHtml('<danger>', hostile);
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(html).not.toContain('<svg/onload=alert(2)>');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('&lt;danger&gt;');
+  });
+});
+
+describe('GUI shell contract: Phase 0 CLI/compiler/sandbox loop still works', () => {
+  test('new -> load -> compile -> sandbox round-trips without manual edits', async () => {
+    const projectDir = await buildWrittenProject('gui-shell-phase0-loop');
+
+    const loaded = await loadHarnessProject(projectDir);
+    expect(loaded.authoring.confirmationRequests.every((request) => request.confirmed)).toBe(true);
+
+    const compileOut = join(projectDir, 'compiler', 'claude-code');
+    const compileResult = await compileClaude(loaded, compileOut);
+    expect(compileResult.generatedFiles.length).toBeGreaterThan(0);
+    expect(compileResult.pluginRoot.startsWith(compileOut)).toBe(true);
+
+    const pluginJson = JSON.parse(await readFile(join(compileResult.pluginRoot, 'plugin.json'), 'utf8')) as { hooks: string; skills: string };
+    expect(pluginJson.hooks).toBe('./hooks/hooks.json');
+    expect(pluginJson.skills).toBe('./skills');
+
+    const sandboxResult = await validateProject(projectDir);
+    expect(sandboxResult.success).toBe(true);
+    expect(sandboxResult.events.length).toBeGreaterThan(0);
+    expect(sandboxResult.events.some((event) => event.eventType === 'hook-activation')).toBe(true);
+  });
+});

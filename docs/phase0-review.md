@@ -70,3 +70,7 @@ The scaffold is a credible Phase 0 starting point and already proves the narrow 
 `intent -> canonical project -> Claude package -> isolated scripted validation -> trace artifacts`
 
 It is **not yet sufficient** to claim the full Phase 0 PRD/test-spec is complete without the gaps above being closed.
+
+## See also
+
+- `docs/gui-shell-contract.md` — contract, viewer state model, and architecture gaps for the GUI-second slice (HTTP server + SVG viewer) layered on this scaffold without changing the CLI/compiler/sandbox loop.

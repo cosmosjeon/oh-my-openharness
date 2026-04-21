@@ -7,11 +7,12 @@ import { applyRiskConfirmations, generateHarnessProject } from './core/generator
 import { loadHarnessProject, writeHarnessProject } from './core/project';
 import { compileClaude } from './compiler/claude';
 import { validateProject } from './sandbox/validate';
+import { startHarnessEditorServer } from './web/server';
 
 type ParsedArgs = { command?: string; flags: Map<string, string>; booleans: Set<string> };
 
 function usage() {
-  console.log(`harness-editor <command> [options]\n\nCommands:\n  chat [--name <name>] [--dir <dir>]\n  new --name <name> --prompt <prompt> [--dir <dir>] [--confirm-risk]\n  compile --project <dir> [--out <dir>]\n  sandbox --project <dir> [--out <dir>] [--fail-hook <hook>]\n  catalog\n  demo --name <name> --prompt <prompt> [--dir <dir>]`);
+  console.log(`harness-editor <command> [options]\n\nCommands:\n  chat [--name <name>] [--dir <dir>]\n  new --name <name> --prompt <prompt> [--dir <dir>] [--confirm-risk]\n  compile --project <dir> [--out <dir>]\n  sandbox --project <dir> [--out <dir>] [--fail-hook <hook>]\n  serve --project <dir> [--port <port>] [--host <host>] [--trace <file>]\n  catalog\n  demo --name <name> --prompt <prompt> [--dir <dir>]`);
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -66,6 +67,22 @@ async function catalog() {
   console.log(JSON.stringify({ blocks: BLOCK_REGISTRY, composites: COMPOSITE_PATTERNS }, null, 2));
 }
 
+async function serveProject(projectDir: string, portValue?: string, host?: string, tracePath?: string) {
+  const port = portValue ? Number(portValue) : 0;
+  if (portValue && !Number.isFinite(port)) throw new Error('--port must be a number');
+  const handle = await startHarnessEditorServer({ projectDir: resolve(projectDir), port: port || 0, host, ...(tracePath ? { tracePath: resolve(tracePath) } : {}) });
+  console.log(JSON.stringify({ url: handle.url, host: handle.host, port: handle.port, projectDir: resolve(projectDir) }, null, 2));
+  const shutdown = async () => {
+    try {
+      await handle.close();
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
 async function chat(defaultName: string, defaultDir: string) {
   if (!input.isTTY || !output.isTTY) {
     console.log('Harness Editor Phase 0 CLI is ready. Run `harness-editor chat` in a TTY or use `new --prompt ...`.');
@@ -116,6 +133,9 @@ const projectDir = parsed.flags.get('project');
 const outDir = parsed.flags.get('out');
 const confirmRisk = parsed.booleans.has('confirm-risk') || parsed.flags.get('confirm-risk') === 'true';
 const failHook = parsed.flags.get('fail-hook');
+const port = parsed.flags.get('port');
+const host = parsed.flags.get('host');
+const tracePath = parsed.flags.get('trace');
 
 if (!parsed.command) {
   await chat(name, dir);
@@ -137,6 +157,10 @@ if (!parsed.command) {
       break;
     case 'catalog':
       await catalog();
+      break;
+    case 'serve':
+      if (!projectDir) throw new Error('--project is required');
+      await serveProject(projectDir, port, host, tracePath);
       break;
     case 'demo':
       await demo(name, prompt, dir);

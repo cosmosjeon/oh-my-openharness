@@ -1,36 +1,33 @@
-# Harness Editor
+# oh-my-openharness
 
-Harness Editor is the Phase 0 scaffold for a **CLI-first harness-maker**.
-It turns an intent prompt into a canonical harness project on disk, compiles that project into a Claude Code plugin package, and validates the generated runtime in an isolated sandbox with structured trace output.
+`oh-my-openharness` (OMOH) is a Bun-first CLI for AI coding-agent workflows. It sets up Claude Code / OpenCode / Codex integrations, writes a canonical harness project to disk, serves a local browser editor over that project, exports runtime-specific bundles, validates generated output, and supports a bounded import-seed path back into the canonical project.
 
-## Current Phase 0 slice
+## Current supported contract
 
-Implemented in this scaffold:
+OMOH currently supports:
 
-- CLI entrypoint with `new`, `compile`, `sandbox`, and `demo` commands
-- Canonical project files on disk:
-  - `harness.json`
-  - `graph/nodes.json`
-  - `graph/edges.json`
-  - `layout.json`
-  - `skills/*.md`
-- Authoritative block/composite registry definitions in `src/core/registry.ts`
-- Claude Code compiler output:
-  - `.claude-plugin/plugin.json`
-  - `hooks/hooks.json`
-  - generated hook scripts in `scripts/*.mjs`
-  - generated skills in `skills/<skill>/SKILL.md`
-  - optional `.mcp.json` + `scripts/mcp-server.mjs`
-- Isolated sandbox validation that executes generated scripts and emits trace artifacts:
-  - `trace.jsonl`
-  - `trace-report.html`
+- Bun-first setup via `bunx oh-my-openharness` or `oh-my-openharness setup`
+- runtime selection for Claude Code, OpenCode, and Codex
+- canonical project generation via `new` and host-aware authoring via `author`
+- a shared browser editor that can:
+  - load the canonical graph
+  - add, update, and delete nodes
+  - add and delete edges
+  - persist layout changes
+  - overlay runtime trace/debug state
+- runtime-specific compile/export paths
+- isolated sandbox validation with structured trace output
+- bounded import-seed flow from runtime bundles back into the canonical project
 
-Not yet complete relative to the full product PRD:
+Important honesty note: the browser editor is shared across runtimes. The current explicit phase-5 serve/editor proof set is strongest for Claude/OpenCode. Codex stays green through the shared editor contract plus Codex-specific author/export/import/sandbox coverage.
 
-- keyword-based generation is still heuristic, not a full intent planner
-- the generator does not yet consume the registry as the sole source of emitted graph structure
-- permission/risk confirmation is represented in the graph, but no interactive confirmation flow exists yet
-- sandbox validation is a representative script execution pass, not a full live Claude Code session
+## Non-goals in this repo
+
+These remain out of scope for the shipped surface:
+
+- marketplace packaging
+- cloud execution
+- full upstream feature-surface cloning for any host runtime
 
 ## Install
 
@@ -38,105 +35,118 @@ Not yet complete relative to the full product PRD:
 bun install
 ```
 
+For the published package path:
+
+```bash
+bunx oh-my-openharness
+```
+
 ## Commands
 
-### Create a canonical project
+```text
+oh-my-openharness setup   [--runtimes <claude,opencode,codex>] [--yes] [--dry-run] [--json]
+oh-my-openharness doctor  [--runtimes <claude,opencode,codex>] [--json]
+oh-my-openharness chat    [--name <name>] [--dir <dir>] [--runtime <claude-code,opencode,codex>]
+oh-my-openharness author  --name <name> --prompt <prompt> [--dir <dir>] [--runtime <claude-code,opencode,codex>] [--confirm-risk]
+oh-my-openharness new     --name <name> --prompt <prompt> [--dir <dir>] [--runtime <claude-code,opencode,codex>] [--confirm-risk]
+oh-my-openharness import  --from <dir> [--name <name>] [--dir <dir>] [--runtime <claude-code,opencode,codex>]
+oh-my-openharness compile --project <dir> [--out <dir>]
+oh-my-openharness export  --project <dir> [--out <dir>]
+oh-my-openharness sandbox --project <dir> [--out <dir>] [--fail-hook <hook>]
+oh-my-openharness serve   --project <dir> [--port <port>] [--host <host>] [--trace <file>]
+oh-my-openharness catalog
+oh-my-openharness demo    --name <name> --prompt <prompt> [--dir <dir>]
+```
+
+## Example flows
+
+### 1. Run the setup wizard
+
+```bash
+bunx oh-my-openharness
+```
+
+### 2. Create a canonical project directly
 
 ```bash
 bun run src/index.ts new \
   --name review-harness \
-  --prompt "Create a review harness with approvals, MCP server support, and retry loop"
+  --runtime codex \
+  --prompt "Create a review harness with approvals, MCP server support, and retry loop" \
+  --confirm-risk
 ```
 
-This writes a project under `.harness-editor/<name>` by default.
-
-### Compile to a Claude Code package
+### 3. Persist host-aware authoring guidance
 
 ```bash
-bun run src/index.ts compile --project .harness-editor/review-harness
+bun run src/index.ts author \
+  --name review-harness \
+  --runtime codex \
+  --prompt "Create a harness that keeps state, performs review loops, and exposes a browser editor" \
+  --confirm-risk
 ```
 
-### Validate in an isolated sandbox
+### 4. Export and validate
 
 ```bash
+bun run src/index.ts export --project .harness-editor/review-harness
 bun run src/index.ts sandbox --project .harness-editor/review-harness
 ```
 
-### Run the golden-path demo
+### 5. Serve the browser editor
 
 ```bash
-bun run src/index.ts demo \
-  --name demo-harness \
-  --prompt "Create a review harness with approval and mcp server"
+bun run src/index.ts serve --project .harness-editor/review-harness
 ```
 
 ## Canonical project model
 
-Phase 0 keeps semantic data separate from view/layout data:
+OMOH keeps semantic data separate from layout/view data:
 
 ```text
 <project>/
-  harness.json            # manifest / prompt / runtime target
-  layout.json             # visual layout sidecar only
+  harness.json
+  layout.json
   graph/
-    nodes.json            # semantic nodes
-    edges.json            # semantic edges
+    nodes.json
+    edges.json
   skills/
-    <name>-skill.md       # generated skill content
-  custom-blocks/          # reserved for opaque/generated blocks
-  compiler/               # compiler output root
+  compiler/
+  sandbox/
 ```
 
-`layout.json` is intentionally separate from `graph/*.json` so CLI/compiler/runtime behavior does not depend on editor coordinates.
+Key rules:
 
-## Prompt-to-node heuristics
+- `graph/*.json` is the semantic source of truth
+- `layout.json` is a sidecar for browser/editor coordinates
+- runtime traces are treated as overlays on the canonical graph, not as a second source of structure
 
-The current generator (`src/core/generator.ts`) always emits this base flow:
+## Compile, export, and trace behavior
 
-- `SessionStart`
-- `UserPromptSubmit`
-- `Skill`
-- `Sequence`
-- `Stop`
-
-Additional nodes are added from prompt keywords:
-
-- approval / approve / permission / 승인 / 권한 → `Permission`
-- mcp / server / tool / 서버 / 도구 → `MCPServer`
-- retry / loop / review / 반복 / 검토 → `Loop`
-- state / memory / 상태 / 기억 → `StateWrite`
-- custom / novel / opaque / 새로운 / 신규 → `CustomBlock`
-
-## Claude compiler outputs
-
-`src/compiler/claude.ts` emits a Claude Code-compatible package structure:
-
-- `.claude-plugin/plugin.json` with skill directory metadata
-- `hooks/hooks.json` for generated hook commands
-- `scripts/<Hook>.mjs` for enabled runtime hooks
-- `skills/<skill>/SKILL.md` for generated behavior
-- `.mcp.json` plus `scripts/mcp-server.mjs` when an MCP node is present
-
-Generated hook scripts append JSONL trace records when `HARNESS_EDITOR_TRACE_FILE` is set.
-
-## Trace contract (current scaffold)
-
-The sandbox validator executes generated scripts with canned payloads and writes JSON Lines events. Current emitted fields are:
-
-- `timestamp`
-- `hook`
-- `nodeId`
-- `status`
-- `message`
-- `payloadLength` (hook scripts only)
-
-An HTML summary is rendered by `src/web/report.ts` for quick inspection.
+- `compile` writes runtime-specific compiler output under `compiler/`
+- `export` writes repo-like runtime bundles with manifests
+- `sandbox` validates generated output and emits trace artifacts consumed by the browser UI
+- the server surfaces stale trace state when runtime graph identity no longer matches the current project graph
 
 ## Verification
 
 ```bash
-bun run test
 bun run typecheck
+bun run test
 ```
 
-See `docs/phase0-review.md` for a review of what the current scaffold covers versus the full Phase 0 PRD/test-spec matrix.
+Current automated verification covers:
+
+- runtime-specific compile/export paths for Claude/OpenCode/Codex
+- setup and doctor behavior
+- host-authoring bridge persistence
+- browser editor mutation and layout persistence
+- trace/debug payload surfacing and stale-trace detection
+- import-seed flow
+- published-style bin entrypoint resolution
+
+## Related docs
+
+- `docs/gui-shell-contract.md` — browser editor/server contract
+- `docs/phase0-review.md` — historical Phase 0 review with current-gap notes
+- `.omx/plans/oh-my-openharness/ACTIVE/current-state.md` — current planning/status truth for the OMOH phase chain

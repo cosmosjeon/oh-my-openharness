@@ -1,260 +1,199 @@
-# GUI Shell Contract (GUI-Second Slice)
+# GUI Shell Contract (current browser editor)
 
-This document defines the contract for the minimal local viewer/editor surface introduced on top of the Phase 0 CLI-first scaffold. It is the review/docs counterpart to the implementation and test lanes that add `src/web/server.ts` and `src/web/viewer.ts`.
+This document describes the **current** browser surface shipped in OMOH. It is no longer a layout-only viewer. The browser app is a real editor over the canonical harness project on disk, with runtime trace/debug overlays layered on top.
 
-The contract exists to keep three data surfaces in agreement:
+The three data surfaces that must stay aligned are:
 
-- the **canonical harness project** on disk (written by `src/core/project.ts`)
-- the **runtime trace output** produced by `src/sandbox/validate.ts`
-- the **viewer state** held in the browser after it loads server payloads
+- the canonical project on disk (`harness.json`, `graph/*.json`, `layout.json`)
+- the runtime trace/debug artifacts produced by sandbox validation
+- the browser state loaded from the local OMOH server
 
-If any one of those surfaces drifts, the GUI stops being a faithful view of the project and becomes another generator that can lie.
+If those surfaces drift, the browser stops being a trustworthy editor/debugger and becomes a second model of the project. The contract below exists to prevent that.
 
 ---
 
-## 1. Scope of this slice
+## 1. Scope
 
-In scope:
+In scope today:
 
-- A localhost HTTP server that reads the canonical project and exposes it to a browser viewer.
-- A single-page SVG viewer that renders nodes and edges from stored layout and overlays runtime trace status.
-- A narrow layout-persistence endpoint so drag-and-drop changes survive a reload.
+- local HTTP server from `src/web/server.ts`
+- browser editor HTML from `src/web/viewer.ts`
+- project load via `loadHarnessProject`
+- layout persistence
+- graph mutations through HTTP endpoints
+- trace/debug polling and stale-trace surfacing
+- rendering of authoring summary and confirmation state in the browser
 
-Explicitly out of scope for this slice (deferred per `HARNESS_EDITOR_PRD.md` §7.3–§7.4):
+Explicitly out of scope today:
 
-- WebSocket streaming of live sandbox events.
-- Chat-driven graph mutation from the GUI.
-- Node add/delete/connect operations.
-- Skill/manifest editing from the GUI.
-- Hot reload of the sandbox from a GUI action.
-- Approval/denial of `confirmationRequests` from the GUI.
+- WebSocket/live trace streaming
+- GUI-triggered runtime setup / compile / export / sandbox execution
+- GUI-side approval/denial of risky confirmation requests
+- live host-runtime conversation inside the browser
+- collaborative editing or multi-user conflict handling
 
-The CLI (`new`, `compile`, `sandbox`, `demo`, `catalog`, `chat`) remains the authoritative authoring and validation surface. The GUI shell is strictly read-mostly with a single layout write.
+The authoritative authoring/runtime surfaces remain the CLI plus the selected host runtime. The browser edits the canonical project and visualizes trace/debug state; it does not replace runtime-native authoring.
 
 ---
 
 ## 2. Boundary rules
 
-- No file outside `src/web/` is modified by the GUI slice.
-- `src/core/*`, `src/compiler/*`, and `src/sandbox/*` stay owned by the CLI loop.
-- The GUI loads projects via `loadHarnessProject` only — it does not define its own project reader.
-- The GUI does not invoke the compiler or sandbox. Those run from the CLI; the GUI observes their artifacts.
+- The browser/editor does **not** maintain a shadow project model.
+- `GET /api/project` always reloads from disk.
+- Trace payloads are overlays only; they do not define graph structure.
+- Layout remains separate from semantic graph state.
+- Browser mutations write back through the canonical project persistence path, not through ad hoc JSON file surgery.
+- Editor mutations must preserve host-authored authoring context and already-confirmed risk gates when graph-derived state is refreshed.
 
-This boundary preserves the PRD principle *harness-first, GUI-second* (§4.2).
+That last rule is enforced in `src/web/server.ts` by merging refreshed derived state with preserved non-derived authoring fields before writing the project back out.
 
 ---
 
 ## 3. HTTP contract
 
-All routes are local-only, JSON over HTTP, no auth, no CORS required. Served from `startHarnessEditorServer({ projectDir, port?, host?, tracePath? })`.
+All routes are local-only and served by `startHarnessEditorServer(...)`.
 
-### 3.1 `GET /` and `GET /index.html`
+### `GET /`
 
-- Returns the viewer HTML shell (`renderViewerHtml(projectName)`).
-- Content-Type: `text/html; charset=utf-8`.
-- Cache-Control: `no-store`.
+Returns the single-page browser editor HTML.
 
-### 3.2 `GET /api/health`
+### `GET /api/health`
 
-Response:
+Returns basic server liveness and project path.
 
-```json
-{ "ok": true, "projectDir": "<absolute path>" }
-```
+### `GET /api/project`
 
-### 3.3 `GET /api/project`
+Returns the current canonical project payload, including:
 
-Reloads the canonical project on every request (no caching). Response shape (`ProjectPayload`):
+- manifest
+- nodes / edges / layout
+- composites / customBlocks / registry snapshot
+- authoring state
+- runtime intents
 
-```ts
-{
-  manifest:        HarnessManifest,
-  nodes:           GraphNode[],
-  edges:           GraphEdge[],
-  layout:          LayoutNode[],
-  composites:      CompositeInstance[],
-  customBlocks:    CustomBlockDefinition[],
-  registry:        RegistrySnapshot,
-  authoring:       AuthoringDecision,
-  runtimeIntents:  RuntimeIntent[]
-}
-```
+### `GET /api/trace`
 
-All types come from `src/core/types.ts`. The payload is exactly the subset of `HarnessProject` a viewer needs — skills content is intentionally omitted because the viewer does not edit skill markdown in this slice.
+Returns the trace payload with:
 
-### 3.4 `GET /api/trace`
+- `source`
+- `path`
+- `events`
+- optional `error`
+- `staleTrace`
+- `expectedGraphHash`
+- `observedGraphHash`
 
-Response (`TracePayload`):
+Trace discovery currently checks, in order:
 
-```ts
-{
-  source: 'trace-file' | 'sandbox-report' | 'none',
-  path:   string | null,
-  events: TraceEvent[],
-  error?: string
-}
-```
-
-Trace file discovery order:
-
-1. `options.tracePath` if supplied to `startHarnessEditorServer`
+1. explicit `tracePath`
 2. `<projectDir>/trace.jsonl`
-3. `<projectDir>/compiler/claude-code/trace.jsonl`
+3. `<projectDir>/compiler/<runtime>/trace.jsonl`
 4. `<projectDir>/sandbox/trace.jsonl`
 
-If none exist, returns `{ source: 'none', path: null, events: [] }`. Partial/invalid JSONL returns `error` but still 200, so the viewer can render an empty trace state instead of erroring the shell.
+### `POST /api/layout`
 
-`TraceEvent` shape is locked in `src/core/types.ts` and mirrored at compile time in `<pluginRoot>/trace-schema.json`.
+Persists layout-only changes.
 
-### 3.5 `POST /api/layout`
+### `POST /api/project/mutate`
 
-Body:
+Supports real editor mutations on the canonical graph:
 
-```json
-{ "layout": [ { "id": "<node-id>", "x": <number>, "y": <number> }, ... ] }
+- `add-node`
+- `update-node`
+- `delete-node`
+- `add-edge`
+- `delete-edge`
+
+Current guardrails:
+
+- generic `add-node` rejects `Skill` nodes; runtime authoring owns those
+- edge endpoints must already exist in the canonical graph
+- unknown node/edge ids are rejected
+
+---
+
+## 4. Viewer/editor behavior
+
+The browser currently exposes:
+
+- node list and project summary
+- confirmation list (read-only)
+- selected-node label/config editing
+- add/delete node controls
+- add/delete edge controls
+- save-layout button
+- runtime trace/debug side panel
+- node highlight from runtime status
+
+Highlight behavior is trace-driven:
+
+- error events mark nodes as error
+- active events mark nodes as active
+- custom blocks retain special styling
+- stale trace is surfaced explicitly when graph hashes diverge
+
+The browser polls trace state on an interval rather than streaming it.
+
+---
+
+## 5. Current data-flow truth
+
+```text
+canonical project on disk  ---> /api/project ---> browser editor state
+runtime trace artifacts    ---> /api/trace   ---> browser trace/debug state
+browser layout/graph edits ---> /api/layout or /api/project/mutate ---> canonical project on disk
 ```
 
-Behavior (`persistLayout` in `src/web/server.ts`):
+Important implications:
 
-- Only ids that exist on `project.nodes` are accepted; unknown ids are silently dropped.
-- Existing layout entries are updated in-place; entries for ids not present in the body are preserved.
-- Writes `<projectDir>/layout.json` via `writeFile` (full replace, not atomic).
-- Response: `{ ok: true, layout: LayoutNode[] }` — the merged layout after persistence.
-
-Validation errors return 400 with `{ error: string }`. Write/read errors return 500.
+- browser edits are first-class project mutations, not temporary UI-only state
+- runtime trace/debug overlays are tied back to canonical node ids and graph hashes
+- stale trace is a supported state, not a silent failure mode
 
 ---
 
-## 4. Viewer state model
+## 6. What changed relative to the earlier GUI-second slice
 
-The browser script keeps a single `state` object:
+The old GUI-second documentation is no longer accurate in these areas:
 
-```ts
-state = {
-  project: ProjectPayload | null,
-  trace:   TracePayload,
-  dirty:   boolean,             // a drag moved at least one node
-  dragNodeId: string | null,
-  activeNodes: Set<string>,     // derived from trace (status: 'ok')
-  errorNodes: Set<string>       // derived from trace (status: 'error')
-}
-```
+- the browser is **not** layout-only anymore
+- graph mutation endpoints now exist
+- editor controls for node/edge changes now exist in the shipped UI
+- trace artifacts can be written under the project and are checked for graph-hash freshness
+- the server now preserves host-authored authoring summary/warnings and confirmed risk-gate state across safe editor mutations
 
-Rendering pipeline:
-
-1. `loadProject()` → `GET /api/project` → `renderProject()` lays out `nodes` + `edges` from `layout`.
-2. `loadTrace()` → `GET /api/trace` → `renderTrace()` computes `activeNodes` / `errorNodes` from `events[*].nodeId` and re-renders the SVG.
-3. A 4-second interval polls `/api/trace` unless a drag is in progress.
-4. `Save layout` POSTs the current `project.layout` back to `/api/layout`.
-
-Highlight rules:
-
-- `node.id ∈ state.errorNodes` → red stroke on the node rect.
-- `node.id ∈ state.activeNodes` → green stroke.
-- `node.kind === 'CustomBlock'` → dashed amber stroke regardless of trace status.
-- Edge between two nodes both in `activeNodes` → blue accent stroke.
-
-The viewer never mutates `project.nodes`, `project.edges`, `project.composites`, or `project.authoring`. The only writable slice is `project.layout`.
+Those behaviors are covered by the current server/browser tests, especially `tests/server.test.ts` and `tests/gui-shell-contract.test.ts`.
 
 ---
 
-## 5. Data flow between the three surfaces
+## 7. Remaining limitations
 
-```
-canonical project (disk)            trace output (sandbox)          viewer state (browser)
-─────────────────────────           ─────────────────────           ──────────────────────
-harness.json                ──┐                                        manifest
-graph/nodes.json            ──┼─> loadHarnessProject() ──┐             nodes, edges, composites
-graph/edges.json            ──┤                          │
-graph/composites.json       ──┤                          │
-layout.json                 ──┤                          ├─> /api/project ─> state.project
-custom-blocks/              ──┤                          │
-registry/                   ──┤                          │
-authoring/decision.json     ──┤                          │
-runtime.json                ──┘                          │
-                                                         │
-<sandbox>/trace.jsonl  ─> readTraceFile() ──────────────┴─> /api/trace  ─> state.trace
-                                                                              │
-                                                                              └─> activeNodes / errorNodes
-```
+The browser/editor is still intentionally bounded:
 
-The canonical project is the only source of graph structure. Trace only contributes runtime status overlays. Viewer-initiated writes flow back to `layout.json` only.
+1. **No live runtime session in the browser**  
+   Host-native authoring still belongs to Claude/OpenCode/Codex, not to this page.
+
+2. **No browser-side approval workflow**  
+   Confirmation requests are visible in the browser, but risk-bearing approvals still belong to CLI/runtime flows.
+
+3. **Polling, not streaming**  
+   Trace updates are fetched periodically, not pushed.
+
+4. **Single-user local workflow**  
+   There is no concurrency/version handshake for simultaneous browser/CLI editing.
+
+5. **Runtime-proof asymmetry still exists at the scenario level**  
+   The shared editor contract is common across runtimes, but the explicit phase-5 serve/editor scenario proofs are currently Claude/OpenCode-heavy while Codex stays green through shared editor coverage plus Codex author/export/import/sandbox proofs.
 
 ---
 
-## 6. Architecture gaps between the three surfaces
+## 8. Verification anchors
 
-These are the concrete mismatches and coupling gaps found while reviewing the slice. Each one has a short description, an impact, and a bounded recommendation. None of them require breaking the CLI/compiler/sandbox loop to fix.
+The current contract is grounded by:
 
-### 6.1 Trace file location is not in the project
+- `tests/server.test.ts`
+- `tests/gui-shell-contract.test.ts`
+- `tests/host-authoring.test.ts`
+- `tests/phase5-proof-audit.test.ts`
 
-- `validateProject` writes trace output to a fresh `mkdtemp(os.tmpdir(), 'harness-editor-')` directory. None of the server's auto-discovery candidates (`<projectDir>/trace.jsonl`, `<projectDir>/compiler/claude-code/trace.jsonl`, `<projectDir>/sandbox/trace.jsonl`) will find that file.
-- Impact: `/api/trace` returns `{ source: 'none' }` after every sandbox run unless the CLI user also passes `--out` to materialize the trace under the project, or the server user passes `tracePath` explicitly.
-- Recommendation: either (a) make `validateProject` copy `trace.jsonl` and `trace-report.html` into `<projectDir>/sandbox/` on completion, or (b) add a `sandbox` CLI flag that writes the trace path to `<projectDir>/.harness-editor/last-run.json` that the server can discover.
-
-### 6.2 Hook-level trace events use kind-as-id, not canonical node id
-
-- The compiler-generated hook scripts (`src/compiler/claude.ts` line 46) emit the hook activation event as `nodeId: '<HookEvent>'` (e.g. `'SessionStart'`). The generator, however, gives that same node an id like `sessionstart-1`.
-- The per-node events inside the hook script (`Skill`, `Permission`, `Loop`, `StateWrite`, `CustomBlock`) correctly use `node.id`.
-- The MCP server script emits `nodeId: 'MCPServer'` (line 132), but the canonical node id is `mcp-server`.
-- Impact: the viewer's `activeNodes` / `errorNodes` sets built from trace `nodeId` will miss every hook-activation event and every MCP event, so those canonical nodes never light up. Trace shows green in the side panel but the canvas stays cold.
-- Recommendation: have the compiler resolve `node.id` for the hook-kind node at compile time and substitute that into the generated script, and do the same for the MCP entry. Keep the `eventType` and `hook` fields unchanged — those remain keyed by hook vocabulary.
-
-### 6.3 `TraceEvent` schema is informally enforced
-
-- `src/compiler/claude.ts` writes `<pluginRoot>/trace-schema.json` with `version: 1` and a `requiredFields` list, but nothing at runtime validates events against it. The viewer silently coerces missing fields via `escapeHtml(undefined) → ''`.
-- Impact: schema drift between compiler hook scripts, sandbox `appendTraceEvent` calls, and the viewer's expectations is not caught until a human notices a missing column.
-- Recommendation: promote `TraceEvent` to the compiler contract (`src/core/types.ts` already defines it) and add a dev-time validator invoked by the sandbox before it appends to the trace file. Surface schema version in `/api/trace` so the viewer can refuse to render an unknown major.
-
-### 6.4 Layout persistence has no concurrency control
-
-- `POST /api/layout` reads the project, merges, and writes `layout.json` with no version check, no lock, no etag.
-- Impact: if the CLI regenerates the project (`new ... --name <same>`) while a viewer has a drag buffered, the layout write-back silently overwrites the regenerated layout. Low probability in single-user local dev, but it is a correctness gap.
-- Recommendation: include `manifest.schemaVersion` + a monotonic `project.updatedAt` in `/api/project`, require the body to echo it back, reject mismatches with 409.
-
-### 6.5 Polling instead of streaming
-
-- The viewer polls `/api/trace` every 4 seconds. PRD §10.1.5 and §15.2 describe a WebSocket sync layer for live trace.
-- Impact: live flow visualization lags by up to 4 s, trace file is fully re-read on every poll, and there is no way to stream an in-progress sandbox run.
-- Recommendation: deferred to the Phase 2 GUI milestone. For this slice, document the polling cadence in the shell contract (done, here) and add `Last-Modified` on `/api/trace` so a future client can short-circuit.
-
-### 6.6 Confirmations surface is read-only
-
-- The viewer renders `authoring.confirmationRequests` but offers no way to act on them. PRD §13.1 requires explicit confirmation for risk-bearing permissions, safety changes, and destructive runtime, but only the CLI `chat` command can currently satisfy that.
-- Impact: a user who sees a pending confirmation in the GUI has to switch back to CLI to resolve it, which is the intended behavior per the PRD risk boundary but needs to be called out in the viewer copy ("Resolve in CLI: `harness-editor chat`").
-- Recommendation: update the empty-state copy to point users at the CLI. Do not add a POST endpoint for confirmations in this slice; it would cross the PRD risk boundary without a supporting interactive flow.
-
-### 6.7 No cross-surface consistency check
-
-- Canonical project, compiled plugin, and trace file can all disagree (e.g. project has a `Loop` node that was later removed; compiled plugin still has the old `scripts/*.mjs`; trace emits events for the removed node id).
-- Impact: the viewer would show trace activity for a node that does not exist on the canvas, silently ignored by `findLayout()`.
-- Recommendation: add a `project.hash` or `project.graphHash` (hash of `nodes` + `edges`) into both the compiled `plugin.json` and into every emitted trace event. The server can then annotate `/api/trace` with `{ staleTrace: true }` when hashes diverge.
-
----
-
-## 7. Risk boundaries pinned from `HARNESS_EDITOR_PRD.md`
-
-The GUI-second slice respects these PRD-level boundaries (unchanged by this document):
-
-- §4.1 No-code first — viewer does not edit hook scripts, plugin manifests, or runtime config.
-- §4.2 Harness-first, GUI-second — viewer is read-mostly over an existing project.
-- §10.2 Source of truth is the project on disk — `/api/project` reloads; the server does not hold an in-memory canonical copy.
-- §10.3 Layout lives in a sidecar — layout writes stay inside `layout.json` and do not touch `graph/*.json`.
-- §13.1 AI autonomy boundary — the GUI does not confirm or approve risk-bearing permissions. Those remain CLI-only for this slice.
-- §15.1 Sandbox isolation — the viewer consumes trace output only; it never spawns, restarts, or writes into the sandbox.
-
-Any future GUI action that would violate one of these boundaries should be re-scoped back to the CLI or gated through a new PRD-level decision.
-
----
-
-## 8. Verification hooks (for the integration lane)
-
-The test/verification lane should at minimum cover:
-
-- `GET /api/project` round-trips the shape of `loadHarnessProject` including registry + authoring.
-- `GET /api/trace` returns `source: 'none'` when no trace file exists and `source: 'trace-file'` with correct path when one does.
-- `POST /api/layout` rejects non-array bodies with 400, persists valid bodies, and ignores unknown node ids.
-- `loadTracePayload` prefers an explicit `tracePath` over auto-discovery.
-- Viewer HTML payload contains the project name and exposes the four panel regions (`summary`, `confirmations`, `node-list`, `trace-list`).
-
-These are implementation tests and belong in `tests/` under the implementation lane, not in this review doc.
+Use those tests plus the current `.omx/plans/oh-my-openharness/*` status artifacts when judging whether the browser/editor contract is still being described honestly.

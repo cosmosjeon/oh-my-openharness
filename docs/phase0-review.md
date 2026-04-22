@@ -1,76 +1,97 @@
 # Phase 0 Review Notes
 
-This review compares the current scaffold against:
+This document started as a review of the original Phase 0 scaffold. The repo has moved well beyond that narrow baseline, so this page now serves two purposes:
 
-- `.omx/plans/prd-harness-editor-phase0-kickoff.md`
-- `.omx/plans/test-spec-harness-editor-phase0-kickoff.md`
+1. preserve what the original Phase 0 slice proved
+2. record which early gaps are now closed versus which ones still meaningfully remain
 
-## What the scaffold already proves
+For current product-level status, prefer the OMOH planning/state artifacts under `.omx/plans/oh-my-openharness/`.
 
-### Canonical project shape
-- Writes a stable project directory with manifest, semantic graph files, skill files, and a separate layout sidecar.
-- Loader/writer round-trip is implemented in `src/core/project.ts`.
+## What the original Phase 0 slice proved
 
-### CLI-first flow exists
-- `src/index.ts` exposes `new`, `compile`, `sandbox`, and `demo` commands.
-- `demo` exercises the intended Phase 0 path end-to-end.
+The initial scaffold already established:
 
-### Claude Code compiler exists
-- `src/compiler/claude.ts` emits a plugin manifest, hook config, generated scripts, generated skills, and optional MCP config.
+- a canonical project shape on disk
+- a CLI-first flow for project creation and validation
+- compiler output generation
+- isolated sandbox validation with trace artifacts
+- early automated smoke coverage
 
-### Isolated validation exists
-- `src/sandbox/validate.ts` compiles into a temporary directory, executes generated runtime scripts, captures JSONL trace output, and renders an HTML report.
+That narrow loop was real and useful:
 
-### Smoke tests exist
-- `tests/generator.test.ts` checks prompt keyword expansion.
-- `tests/compiler.test.ts` checks Claude package file generation.
-- `tests/sandbox.test.ts` checks isolated execution and trace artifact creation.
+`intent -> canonical project -> runtime bundle -> isolated validation -> trace artifacts`
 
-## Gaps against the full Phase 0 spec
+## What is no longer accurate from the older review
 
-### 1. Registry is not yet the single generation authority
-The plan/test spec asks for one authoritative registry for atomic blocks and composites. The registry exists in `src/core/registry.ts`, but `src/core/generator.ts` still hardcodes node emission instead of deriving structure from that registry.
+Several gaps called out in the original version have since been closed or materially reduced.
 
-### 2. Safety-boundary escalation is not implemented
-The generator can place a `Permission` node in the graph, but there is no interactive confirmation flow or refusal path for risky changes yet. That means the current scaffold represents the boundary structurally, not behaviorally.
+### Safety confirmation behavior is no longer only structural
 
-### 3. Representative E2E is still synthetic
-Sandbox validation currently runs generated scripts with canned payloads through `spawnSync`. This is a useful isolated proof, but it is not yet a full live agent-session validation loop.
+The older review said the repo had no interactive confirmation/refusal path. That is now stale.
 
-### 4. Trace schema is only partially formalized
-The current trace output is stable enough for smoke validation, but the schema is not yet documented in code as a strict contract for downstream GUI/WebSocket consumers.
+Current behavior includes:
 
-### 5. Test matrix coverage is still partial
-The Phase 0 test spec defines 11 checks. The current automated suite covers only a focused subset:
+- risky generation blocked unless confirmation is provided
+- interactive CLI confirmation/refusal support in `chat`
+- summary approval handling in `setup`
+- host/runtime readiness surfaced separately in `doctor`
 
-- project generation keyword expansion
-- compiler artifact presence
-- isolated sandbox trace production
+### The GUI is no longer a narrow read-only shell
 
-Remaining items still need dedicated coverage or stronger implementation:
+The earlier review predated the current browser editor capabilities.
 
-- registry completeness as generation source of truth
-- semantic/layout separation assertions
-- no-manual-edit validation at the generated package level
-- explicit isolation guarantees against existing local harnesses
-- failure surfacing semantics for GUI consumers
-- safety confirmation behavior
+Today the browser surface can:
 
-## Recommended next implementation moves
+- mutate the canonical graph
+- persist layout
+- preserve host-authored authoring state across safe graph edits
+- surface trace/debug overlays and stale-trace state
 
-1. Refactor generation to derive emitted block kinds from `src/core/registry.ts`.
-2. Add a real confirmation boundary for risky permission-affecting intent.
-3. Promote the trace payload into a typed, documented schema shared by compiler + sandbox + future GUI consumers.
-4. Expand tests to map one-to-one with the Phase 0 test-spec checklist.
+### Trace/debug fidelity is stronger than the original review implied
+
+The trace contract now includes typed event handling, graph-hash awareness, and stale-trace surfacing in the local server/browser path. The earlier review's "partially formalized" warning is still useful as historical context, but it under-describes the current implementation.
+
+### Test coverage is substantially broader
+
+The suite now covers far more than the original three-smoke-test subset. Current automated coverage includes:
+
+- runtime-specific compile/export paths
+- setup and doctor behavior
+- host-authoring bridge persistence
+- server/browser mutation behavior
+- graph-hash stale-trace handling
+- import-seed flow
+- published-style bin entrypoint behavior
+- phase-5 proof-audit validation
+
+## Gaps that still meaningfully remain
+
+Not every original concern is fully gone.
+
+### 1. Registry-driven generation is still not fully sovereign
+
+The old concern that the registry is not yet the sole generation authority still appears materially valid. The repo has improved around runtime targeting and authoring state, but the generation path is not yet a pure registry-driven emitter.
+
+### 2. Automated proof is not the same thing as a live hosted session
+
+The project now has runtime-aware setup/doctor/author/export/import/sandbox coverage, but the automated suite still validates the local bundle/orchestration surface rather than driving a full external host UI session end-to-end.
+
+### 3. Documentation can lag implementation quickly
+
+This is now a demonstrated recurring issue: code/tests/proofs advanced beyond older README/docs wording, and honesty reconciliation was needed to bring the docs back in line.
 
 ## Current confidence
 
-The scaffold is a credible Phase 0 starting point and already proves the narrow loop of:
+This repository is **not** just a Phase 0 scaffold anymore. It now supports a much broader OMOH contract around setup, host-aware authoring persistence, browser editing, runtime-specific export, validation, and bounded import seed behavior.
 
-`intent -> canonical project -> Claude package -> isolated scripted validation -> trace artifacts`
+A more accurate current statement is:
 
-It is **not yet sufficient** to claim the full Phase 0 PRD/test-spec is complete without the gaps above being closed.
+- the original Phase 0 baseline is solidly proven
+- several once-open gaps are now closed
+- the remaining meaningful gaps are about deeper generation authority, doc drift, and how much live host behavior is proven directly by automation versus by bounded scenario evidence
 
 ## See also
 
-- `docs/gui-shell-contract.md` — contract, viewer state model, and architecture gaps for the GUI-second slice (HTTP server + SVG viewer) layered on this scaffold without changing the CLI/compiler/sandbox loop.
+- `README.md` — top-level project surface and commands
+- `docs/gui-shell-contract.md` — current browser editor/server contract
+- `.omx/plans/oh-my-openharness/ACTIVE/current-state.md` — current OMOH execution summary

@@ -13,7 +13,7 @@ async function fetchJson(url: string, init?: RequestInit): Promise<{ status: num
 }
 
 async function setupProject(): Promise<{ projectDir: string; cleanup: () => Promise<void> }> {
-  const root = await mkdtemp(join(tmpdir(), 'harness-editor-server-'));
+  const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-server-'));
   const projectDir = join(root, 'server-fixture');
   const project = applyRiskConfirmations(generateHarnessProject('server-fixture', 'Create a basic harness with review loop and mcp server'), true);
   await writeHarnessProject(projectDir, project);
@@ -25,7 +25,7 @@ async function setupProject(): Promise<{ projectDir: string; cleanup: () => Prom
   };
 }
 
-describe('harness-editor local server', () => {
+describe('oh-my-openharness local server', () => {
   let fixture: { projectDir: string; cleanup: () => Promise<void> } | null = null;
   let handle: ServerHandle | null = null;
 
@@ -77,23 +77,48 @@ describe('harness-editor local server', () => {
     expect(payload.events).toEqual([]);
   });
 
+  test('reports server health separately from project payloads', async () => {
+    const { status, body } = await fetchJson(`${handle!.url}/api/health`);
+    expect(status).toBe(200);
+    const payload = body as { ok: boolean; projectDir: string };
+    expect(payload.ok).toBe(true);
+    expect(payload.projectDir).toBe(fixture!.projectDir);
+  });
+
   test('reads trace events produced by sandbox runs', async () => {
     const tracePath = join(fixture!.projectDir, 'trace.jsonl');
+    const manifest = JSON.parse(await readFile(join(fixture!.projectDir, 'harness.json'), 'utf8')) as { graphHash: string };
     const now = new Date().toISOString();
     await writeFile(
       tracePath,
       [
-        JSON.stringify({ timestamp: now, eventType: 'hook-activation', hook: 'SessionStart', nodeId: 'session-start-1', status: 'ok', message: 'ready' }),
-        JSON.stringify({ timestamp: now, eventType: 'failure', hook: 'PreToolUse', nodeId: 'pre-tool-use-5', status: 'error', message: 'forced failure' })
+        JSON.stringify({ timestamp: now, eventType: 'hook-activation', hook: 'SessionStart', nodeId: 'sessionstart-1', status: 'ok', message: 'ready', metadata: { graphHash: manifest.graphHash, runtime: 'claude-code' } }),
+        JSON.stringify({ timestamp: now, eventType: 'failure', hook: 'PreToolUse', nodeId: 'pretooluse-5', status: 'error', message: 'forced failure', metadata: { graphHash: manifest.graphHash, runtime: 'claude-code' } })
       ].join('\n')
     );
     const { status, body } = await fetchJson(`${handle!.url}/api/trace`);
     expect(status).toBe(200);
-    const payload = body as { source: string; path: string; events: Array<{ status: string; nodeId: string }> };
+    const payload = body as { source: string; path: string; staleTrace: boolean; events: Array<{ status: string; nodeId: string }> };
     expect(payload.source).toBe('trace-file');
     expect(payload.path).toBe(tracePath);
+    expect(payload.staleTrace).toBe(false);
     expect(payload.events.length).toBe(2);
     expect(payload.events[1].status).toBe('error');
+  });
+
+  test('marks trace payload stale when graph hash no longer matches the canonical project', async () => {
+    const tracePath = join(fixture!.projectDir, 'trace.jsonl');
+    const now = new Date().toISOString();
+    await writeFile(
+      tracePath,
+      JSON.stringify({ timestamp: now, eventType: 'hook-activation', hook: 'SessionStart', nodeId: 'sessionstart-1', status: 'ok', message: 'ready', metadata: { graphHash: 'stale-graph-hash', runtime: 'claude-code' } })
+    );
+    const { status, body } = await fetchJson(`${handle!.url}/api/trace`);
+    expect(status).toBe(200);
+    const payload = body as { staleTrace: boolean; observedGraphHash: string | null; expectedGraphHash: string };
+    expect(payload.staleTrace).toBe(true);
+    expect(payload.observedGraphHash).toBe('stale-graph-hash');
+    expect(typeof payload.expectedGraphHash).toBe('string');
   });
 
   test('persists layout updates without mutating other files', async () => {
@@ -116,6 +141,36 @@ describe('harness-editor local server', () => {
 
     const manifest = JSON.parse(await readFile(join(fixture!.projectDir, 'harness.json'), 'utf8')) as { name: string };
     expect(manifest.name).toBe('server-fixture');
+  });
+
+  test('mutates the canonical graph through the editor endpoint', async () => {
+    const addNode = await fetchJson(`${handle!.url}/api/project/mutate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add-node', kind: 'Condition', label: 'Editor-added condition', x: 320, y: 140 })
+    });
+    expect(addNode.status).toBe(200);
+    const addedPayload = addNode.body as { nodes: Array<{ id: string; label: string }>; edges: Array<{ id: string; from: string; to: string }> };
+    const addedNode = addedPayload.nodes.find((node) => node.label === 'Editor-added condition');
+    expect(addedNode).toBeDefined();
+
+    const addEdge = await fetchJson(`${handle!.url}/api/project/mutate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add-edge', from: addedNode!.id, to: addedPayload.nodes[0]!.id, label: 'editor-link' })
+    });
+    expect(addEdge.status).toBe(200);
+    const edgePayload = addEdge.body as { edges: Array<{ id: string; label?: string }> };
+    expect(edgePayload.edges.some((edge) => edge.label === 'editor-link')).toBe(true);
+
+    const deleteNode = await fetchJson(`${handle!.url}/api/project/mutate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete-node', nodeId: addedNode!.id })
+    });
+    expect(deleteNode.status).toBe(200);
+    const deletePayload = deleteNode.body as { nodes: Array<{ id: string }> };
+    expect(deletePayload.nodes.some((node) => node.id === addedNode!.id)).toBe(false);
   });
 
   test('rejects malformed layout payloads', async () => {

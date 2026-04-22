@@ -5,6 +5,18 @@ import type { HarnessManifest, HarnessProject, RuntimeIntent, SkillFile } from '
 
 const CURRENT_SCHEMA_VERSION = '0.1.0';
 
+export function computeGraphHash(manifest: Pick<HarnessManifest, 'name' | 'targetRuntime' | 'prompt'>, nodes: HarnessProject['nodes'], edges: HarnessProject['edges']): string {
+  return Bun.hash(
+    JSON.stringify({
+      name: manifest.name,
+      targetRuntime: manifest.targetRuntime,
+      prompt: manifest.prompt,
+      nodes: nodes.map(({ id, kind, label, config }) => ({ id, kind, label, config })),
+      edges: edges.map(({ id, from, to, label }) => ({ id, from, to, label }))
+    })
+  ).toString(16);
+}
+
 function normalizeManifest(manifest: HarnessManifest): HarnessManifest {
   return {
     ...manifest,
@@ -30,7 +42,10 @@ function deriveRuntimeIntents(manifest: HarnessManifest, nodes: HarnessProject['
 }
 
 function normalizeProject(project: HarnessProject): HarnessProject {
-  const manifest = normalizeManifest(project.manifest);
+  const manifest = {
+    ...normalizeManifest(project.manifest),
+    graphHash: computeGraphHash(project.manifest, project.nodes, project.edges)
+  };
   return {
     ...project,
     manifest,

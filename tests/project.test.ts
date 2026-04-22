@@ -7,7 +7,7 @@ import { loadHarnessProject, writeHarnessProject } from '../src/core/project';
 
 describe('project persistence', () => {
   test('writes extensible runtime/composite metadata and reloads it', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'harness-editor-project-roundtrip-'));
+    const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-project-roundtrip-'));
     const project = applyRiskConfirmations(
       generateHarnessProject('roundtrip', 'Create a harness with MCP server and approval flow and custom runtime'),
       true
@@ -25,6 +25,7 @@ describe('project persistence', () => {
 
     expect(loaded.manifest.schemaVersion).toBe('0.1.0');
     expect(loaded.manifest.supportedRuntimes).toEqual(['claude-code']);
+    expect(typeof loaded.manifest.graphHash).toBe('string');
     expect(loaded.composites.length).toBeGreaterThan(0);
     expect(loaded.runtimeIntents?.some((intent) => intent.kind === 'mcp-server')).toBe(true);
     expect(loaded.customBlocks[0]?.opaque).toBe(true);
@@ -32,7 +33,7 @@ describe('project persistence', () => {
   });
 
   test('loads legacy project shape and derives runtime intents', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'harness-editor-project-legacy-'));
+    const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-project-legacy-'));
     const project = generateHarnessProject('legacy', 'Create a harness with MCP server');
     await writeHarnessProject(root, project);
     const loaded = await loadHarnessProject(root);

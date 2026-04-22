@@ -68,6 +68,7 @@ export interface HarnessManifest {
   supportedRuntimes?: RuntimeTarget[];
   createdAt: string;
   prompt: string;
+  graphHash?: string;
 }
 
 export interface ConfirmationRequest {
@@ -135,6 +136,87 @@ export interface RuntimeIntent {
   safety: SafetyLevel;
 }
 
+export type SetupRuntime = 'claude' | 'opencode' | 'codex';
+export type SetupProvenanceType = 'extracted' | 'adapted' | 'novel';
+export type SetupSupportLevel = 'supported' | 'scaffold';
+
+export interface SetupChange {
+  runtime: SetupRuntime;
+  path: string;
+  kind: 'mkdir' | 'write';
+  risk: 'safe' | 'risky';
+  reason: string;
+}
+
+export interface RuntimeCapabilityMatrixEntry {
+  runtime: SetupRuntime;
+  displayName: string;
+  supportLevel: SetupSupportLevel;
+  binaryCandidates: string[];
+  binaryDetected: boolean;
+  binaryPath?: string;
+  configEnvVar: string;
+  configRoot: string;
+  installRoot: string;
+  installSurface: string[];
+  mutationSurface: string[];
+  approvalSemantics: string;
+  rollbackBehavior: string[];
+  proofMethod: string;
+  provenanceType: SetupProvenanceType;
+  evidenceFiles: string[];
+  installStatus: 'configured' | 'scaffolded' | 'ready-to-apply' | 'missing-binary' | 'planned';
+}
+
+export interface RuntimeSetupPlan {
+  productName: string;
+  selectedRuntimes: SetupRuntime[];
+  capabilityMatrix: RuntimeCapabilityMatrixEntry[];
+  safeReads: string[];
+  riskyWrites: SetupChange[];
+  approvalRequired: boolean;
+  approvalMode: 'summary' | 'none';
+  summary: string;
+}
+
+export interface SetupApplyResult {
+  productName: string;
+  selectedRuntimes: SetupRuntime[];
+  capabilityMatrix: RuntimeCapabilityMatrixEntry[];
+  appliedWrites: SetupChange[];
+  approvalRequired: boolean;
+  approvalMode: 'summary' | 'none';
+  summary: string;
+}
+
+export interface RuntimeDoctorCheck {
+  status: 'ok' | 'warning' | 'error';
+  details: string[];
+}
+
+export interface RuntimeDoctorEntry {
+  runtime: SetupRuntime;
+  displayName: string;
+  supportLevel: SetupSupportLevel;
+  binaryDetected: boolean;
+  binaryPath?: string;
+  configRoot: string;
+  installRoot: string;
+  installShape: RuntimeDoctorCheck;
+  hostReadiness: RuntimeDoctorCheck;
+  suggestedNextCommand: string;
+}
+
+export interface RuntimeDoctorReport {
+  productName: string;
+  bun: {
+    available: boolean;
+    version?: string;
+  };
+  selectedRuntimes: SetupRuntime[];
+  runtimes: RuntimeDoctorEntry[];
+}
+
 export interface HarnessProject {
   manifest: HarnessManifest;
   nodes: GraphNode[];
@@ -151,7 +233,25 @@ export interface HarnessProject {
 export interface CompileResult {
   outDir: string;
   pluginRoot: string;
+  runtime: RuntimeTarget;
+  validationManifestPath: string;
+  exportManifestPath: string;
   generatedFiles: string[];
+}
+
+export interface RuntimeValidationStep {
+  hook: string;
+  command: string;
+  args?: string[];
+  nodeId: string;
+}
+
+export interface RuntimeValidationManifest {
+  runtime: RuntimeTarget;
+  runtimeRoot: string;
+  traceSchemaPath: string;
+  steps: RuntimeValidationStep[];
+  mcpServers?: Array<{ name: string; command: string; args?: string[]; nodeId: string }>;
 }
 
 export interface TraceEvent {

@@ -2,9 +2,9 @@ import { appendFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promise
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { compileClaude } from '../compiler/claude';
+import { compileProjectForRuntime } from '../compiler';
 import { loadHarnessProject } from '../core/project';
-import type { SandboxRunResult, TraceEvent } from '../core/types';
+import type { RuntimeValidationManifest, SandboxRunResult, TraceEvent } from '../core/types';
 import { renderTraceHtml } from '../web/report';
 
 const SAMPLE_PAYLOADS: Record<string, string> = {
@@ -19,17 +19,6 @@ interface ValidateOptions {
   outDir?: string;
   failHook?: string;
 }
-
-interface HookCommandEntry {
-  type: string;
-  command: string;
-  timeout: number;
-}
-interface HookConfigFile {
-  hooks?: Record<string, Array<{ matcher: string; hooks: HookCommandEntry[] }>>;
-}
-interface PluginManifest { mcpServers?: string; }
-interface McpConfigFile { mcpServers?: Record<string, { command: string; args?: string[] }>; }
 
 async function appendTraceEvent(traceFile: string, event: Record<string, unknown> | TraceEvent) {
   await mkdir(dirname(traceFile), { recursive: true });
@@ -51,8 +40,30 @@ async function buildSandboxEnv(sandboxDir: string, pluginRoot: string, traceFile
   const dataDir = join(sandboxDir, 'data');
   const cacheDir = join(sandboxDir, 'cache');
   const claudeConfigDir = join(sandboxDir, 'claude-config');
-  await Promise.all([mkdir(homeDir, { recursive: true }), mkdir(configDir, { recursive: true }), mkdir(dataDir, { recursive: true }), mkdir(cacheDir, { recursive: true }), mkdir(claudeConfigDir, { recursive: true })]);
-  return { ...process.env, HOME: homeDir, XDG_CONFIG_HOME: configDir, XDG_DATA_HOME: dataDir, XDG_CACHE_HOME: cacheDir, CLAUDE_CONFIG_DIR: claudeConfigDir, CLAUDE_PLUGIN_ROOT: pluginRoot, HARNESS_EDITOR_SANDBOX_DIR: sandboxDir, HARNESS_EDITOR_TRACE_FILE: traceFile };
+  const codexHome = join(sandboxDir, 'codex-home');
+  const opencodeConfigDir = join(sandboxDir, 'opencode-config');
+  await Promise.all([
+    mkdir(homeDir, { recursive: true }),
+    mkdir(configDir, { recursive: true }),
+    mkdir(dataDir, { recursive: true }),
+    mkdir(cacheDir, { recursive: true }),
+    mkdir(claudeConfigDir, { recursive: true }),
+    mkdir(codexHome, { recursive: true }),
+    mkdir(opencodeConfigDir, { recursive: true })
+  ]);
+  return {
+    ...process.env,
+    HOME: homeDir,
+    XDG_CONFIG_HOME: configDir,
+    XDG_DATA_HOME: dataDir,
+    XDG_CACHE_HOME: cacheDir,
+    CLAUDE_CONFIG_DIR: claudeConfigDir,
+    OPENCODE_CONFIG_DIR: opencodeConfigDir,
+    CODEX_HOME: codexHome,
+    CLAUDE_PLUGIN_ROOT: pluginRoot,
+    OMOH_SANDBOX_DIR: sandboxDir,
+    OMOH_TRACE_FILE: traceFile
+  };
 }
 
 function formatFailureOutput(stdout: string, stderr: string): string {
@@ -61,36 +72,37 @@ function formatFailureOutput(stdout: string, stderr: string): string {
 
 export async function validateProject(projectDir: string, options: ValidateOptions | string = {}): Promise<SandboxRunResult> {
   const resolvedOptions = typeof options === 'string' ? { outDir: options } : options;
-  const sandboxDir = await mkdtemp(join(tmpdir(), 'harness-editor-'));
-  const compileDir = resolvedOptions.outDir ?? join(sandboxDir, 'compiled');
-  const traceFile = join(sandboxDir, 'trace.jsonl');
-  const htmlReport = join(sandboxDir, 'trace-report.html');
+  const resolvedProjectDir = resolve(projectDir);
+  const sandboxDir = await mkdtemp(join(tmpdir(), 'oh-my-openharness-'));
+  const compileDir = resolvedOptions.outDir ?? join(resolvedProjectDir, 'compiler');
+  const traceFile = join(resolvedProjectDir, 'sandbox', 'trace.jsonl');
+  const htmlReport = join(resolvedProjectDir, 'sandbox', 'trace-report.html');
   await mkdir(compileDir, { recursive: true });
+  await mkdir(dirname(traceFile), { recursive: true });
   await writeFile(traceFile, '');
 
-  const project = await loadHarnessProject(resolve(projectDir));
-  const compileResult = await compileClaude(project, compileDir);
+  const project = await loadHarnessProject(resolvedProjectDir);
+  const compileResult = await compileProjectForRuntime(project, compileDir);
   const sandboxEnv = await buildSandboxEnv(sandboxDir, compileResult.pluginRoot, traceFile);
 
   let failure: TraceEvent | undefined;
 
   try {
-    const hooksPath = join(compileResult.pluginRoot, 'hooks', 'hooks.json');
-    const hookConfig = JSON.parse(await readFile(hooksPath, 'utf8')) as HookConfigFile;
+    const validationManifest = JSON.parse(await readFile(compileResult.validationManifestPath, 'utf8')) as RuntimeValidationManifest;
     for (const [hook, payload] of Object.entries(SAMPLE_PAYLOADS)) {
-      const commands = hookConfig.hooks?.[hook]?.flatMap((entry) => entry.hooks) ?? [];
+      const commands = validationManifest.steps.filter((step) => step.hook === hook);
       for (const commandEntry of commands) {
         const forcePayload = resolvedOptions.failHook === hook ? JSON.stringify({ ...JSON.parse(payload), forceFailure: true }) : payload;
-        const result = spawnSync('sh', ['-lc', commandEntry.command], { cwd: compileResult.pluginRoot, env: sandboxEnv, input: forcePayload, encoding: 'utf8' });
+        const result = spawnSync(commandEntry.command, commandEntry.args ?? [], { cwd: validationManifest.runtimeRoot, env: sandboxEnv, input: forcePayload, encoding: 'utf8' });
         if (result.status !== 0) {
           const event: TraceEvent = {
             timestamp: new Date().toISOString(),
             eventType: 'failure',
             hook,
-            nodeId: hook,
+            nodeId: commandEntry.nodeId,
             status: 'error',
             message: `Hook command failed for ${hook}`,
-            metadata: { details: formatFailureOutput(result.stdout, result.stderr) }
+            metadata: { details: formatFailureOutput(result.stdout, result.stderr), runtime: validationManifest.runtime, graphHash: project.manifest.graphHash }
           };
           failure = event;
           await appendTraceEvent(traceFile, event);
@@ -99,20 +111,23 @@ export async function validateProject(projectDir: string, options: ValidateOptio
       }
     }
 
-    const pluginManifest = JSON.parse(await readFile(join(compileResult.pluginRoot, 'plugin.json'), 'utf8')) as PluginManifest;
-    if (pluginManifest.mcpServers) {
-      const mcpConfigPath = resolve(compileResult.pluginRoot, pluginManifest.mcpServers);
-      const mcpConfig = JSON.parse(await readFile(mcpConfigPath, 'utf8')) as McpConfigFile;
-      for (const [name, server] of Object.entries(mcpConfig.mcpServers ?? {})) {
-        const result = spawnSync(server.command, server.args ?? [], { cwd: compileResult.pluginRoot, env: sandboxEnv, encoding: 'utf8' });
+    for (const server of validationManifest.mcpServers ?? []) {
+      const result = spawnSync(server.command, server.args ?? [], { cwd: validationManifest.runtimeRoot, env: sandboxEnv, encoding: 'utf8' });
         if (result.status !== 0) {
-          const event: TraceEvent = { timestamp: new Date().toISOString(), eventType: 'failure', hook: 'MCPServer', nodeId: name, status: 'error', message: `Sandbox MCP server failed for ${name}`, metadata: { details: formatFailureOutput(result.stdout, result.stderr) } };
+          const event: TraceEvent = {
+            timestamp: new Date().toISOString(),
+            eventType: 'failure',
+            hook: 'MCPServer',
+            nodeId: server.nodeId,
+            status: 'error',
+            message: `Sandbox MCP server failed for ${server.name}`,
+            metadata: { details: formatFailureOutput(result.stdout, result.stderr), runtime: validationManifest.runtime, graphHash: project.manifest.graphHash }
+          };
           failure = event;
           await appendTraceEvent(traceFile, event);
-          throw new Error(`Sandbox MCP server failed for ${name}`);
+          throw new Error(`Sandbox MCP server failed for ${server.name}`);
         }
       }
-    }
   } catch {
     // failure captured in trace
   }

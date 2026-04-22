@@ -11,7 +11,7 @@ export function renderViewerHtml(projectName: string): string {
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>${escapeHtml(projectName)} — Harness Editor</title>
+    <title>${escapeHtml(projectName)} — oh-my-openharness</title>
     <style>
       :root { color-scheme: dark; --panel: #0f172a; --panel-2: #111827; --border: #1f2937; --text: #e2e8f0; --muted: #94a3b8; --accent: #60a5fa; --ok: #22c55e; --err: #ef4444; --warn: #f59e0b; }
       * { box-sizing: border-box; }
@@ -31,14 +31,20 @@ export function renderViewerHtml(projectName: string): string {
       aside section + section { margin-top: 16px; }
       .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
       .node-list li { list-style: none; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 6px; background: var(--panel-2); font-size: 0.8rem; }
+      .node-list li.is-selected { border-color: var(--accent); }
       .node-list li strong { color: var(--text); display: block; }
       .node-list li span { color: var(--muted); font-size: 0.72rem; }
+      .editor-grid { display: grid; gap: 8px; }
+      .editor-grid input, .editor-grid select, .editor-grid textarea { width: 100%; background: #020617; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 0.78rem; }
+      .editor-grid textarea { min-height: 72px; resize: vertical; }
+      .editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
       main { grid-area: canvas; position: relative; overflow: hidden; }
       svg { width: 100%; height: 100%; background: radial-gradient(circle at 20% 10%, rgba(96, 165, 250, 0.08), transparent 60%), #020617; }
       .node rect { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.2; rx: 8; ry: 8; }
       .node.is-error rect { stroke: var(--err); stroke-width: 2; }
       .node.is-active rect { stroke: var(--ok); stroke-width: 2; }
       .node.is-custom rect { stroke: var(--warn); stroke-dasharray: 4 4; }
+      .node.is-selected rect { stroke: var(--accent); stroke-width: 2; }
       .node text { font-size: 11px; fill: var(--text); }
       .node text.kind { fill: var(--muted); font-size: 10px; }
       .edge { stroke: #475569; stroke-width: 1.4; fill: none; marker-end: url(#edge-arrow); }
@@ -59,7 +65,7 @@ export function renderViewerHtml(projectName: string): string {
   </head>
   <body>
     <header>
-      <h1>Harness Editor</h1>
+      <h1>oh-my-openharness</h1>
       <span class="muted" id="project-name">${escapeHtml(projectName)}</span>
       <span class="pill" id="runtime-pill">—</span>
       <div class="actions">
@@ -79,6 +85,25 @@ export function renderViewerHtml(projectName: string): string {
       <section>
         <h2>Nodes</h2>
         <ul class="node-list" id="node-list"></ul>
+      </section>
+      <section>
+        <h2>Editor</h2>
+        <div class="editor-grid">
+          <div id="editor-status" class="status">Select a node to edit its label/config, or add a new node.</div>
+          <label>Selected node label<input id="node-label" type="text" /></label>
+          <label>Selected node config (JSON)<textarea id="node-config"></textarea></label>
+          <div class="editor-actions">
+            <button id="save-node-btn" type="button">Save node</button>
+            <button id="delete-node-btn" type="button">Delete node</button>
+          </div>
+          <label>New node kind<select id="new-node-kind"></select></label>
+          <label>New node label<input id="new-node-label" type="text" /></label>
+          <button id="add-node-btn" type="button">Add node</button>
+          <label>Connect selected node to<select id="edge-target"></select></label>
+          <button id="add-edge-btn" type="button">Add edge</button>
+          <label>Existing edge<select id="edge-select"></select></label>
+          <button id="delete-edge-btn" type="button">Delete edge</button>
+        </div>
       </section>
     </aside>
     <main>
@@ -101,7 +126,7 @@ export function renderViewerHtml(projectName: string): string {
     </aside>
     <script>
       (function () {
-        const state = { project: null, trace: { events: [] }, dirty: false, dragNodeId: null, activeNodes: new Set(), errorNodes: new Set() };
+        const state = { project: null, trace: { events: [] }, dirty: false, dragNodeId: null, selectedNodeId: null, activeNodes: new Set(), errorNodes: new Set() };
         const canvas = document.getElementById('canvas');
         const nodesLayer = document.getElementById('nodes-layer');
         const edgesLayer = document.getElementById('edges-layer');
@@ -113,6 +138,18 @@ export function renderViewerHtml(projectName: string): string {
         const runtimePill = document.getElementById('runtime-pill');
         const saveBtn = document.getElementById('save-btn');
         const refreshBtn = document.getElementById('refresh-btn');
+        const editorStatusEl = document.getElementById('editor-status');
+        const nodeLabelInput = document.getElementById('node-label');
+        const nodeConfigInput = document.getElementById('node-config');
+        const saveNodeBtn = document.getElementById('save-node-btn');
+        const deleteNodeBtn = document.getElementById('delete-node-btn');
+        const newNodeKindSelect = document.getElementById('new-node-kind');
+        const newNodeLabelInput = document.getElementById('new-node-label');
+        const addNodeBtn = document.getElementById('add-node-btn');
+        const edgeTargetSelect = document.getElementById('edge-target');
+        const addEdgeBtn = document.getElementById('add-edge-btn');
+        const edgeSelect = document.getElementById('edge-select');
+        const deleteEdgeBtn = document.getElementById('delete-edge-btn');
 
         function escapeHtml(value) {
           return String(value == null ? '' : value)
@@ -121,6 +158,10 @@ export function renderViewerHtml(projectName: string): string {
 
         function findLayout(id) {
           return state.project.layout.find(function (item) { return item.id === id; });
+        }
+
+        function selectedNode() {
+          return state.project && state.selectedNodeId ? state.project.nodes.find(function (node) { return node.id === state.selectedNodeId; }) : null;
         }
 
         function computeViewBox(layout) {
@@ -143,7 +184,7 @@ export function renderViewerHtml(projectName: string): string {
           state.project.nodes.forEach(function (node) {
             const pos = findLayout(node.id) || { x: 40, y: 40 };
             const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            group.setAttribute('class', 'node' + (state.activeNodes.has(node.id) ? ' is-active' : '') + (state.errorNodes.has(node.id) ? ' is-error' : '') + (node.kind === 'CustomBlock' ? ' is-custom' : ''));
+            group.setAttribute('class', 'node' + (state.activeNodes.has(node.id) ? ' is-active' : '') + (state.errorNodes.has(node.id) ? ' is-error' : '') + (node.kind === 'CustomBlock' ? ' is-custom' : '') + (state.selectedNodeId === node.id ? ' is-selected' : ''));
             group.setAttribute('transform', 'translate(' + pos.x + ',' + pos.y + ')');
             group.dataset.nodeId = node.id;
 
@@ -167,6 +208,10 @@ export function renderViewerHtml(projectName: string): string {
             kind.textContent = node.kind + ' · ' + node.id;
             group.appendChild(kind);
 
+            group.addEventListener('click', function () {
+              state.selectedNodeId = node.id;
+              renderProject();
+            });
             group.addEventListener('pointerdown', beginDrag);
             nodesLayer.appendChild(group);
           });
@@ -199,6 +244,27 @@ export function renderViewerHtml(projectName: string): string {
           });
         }
 
+        function renderEditor() {
+          if (!state.project) return;
+          const selected = selectedNode();
+          const availableKinds = Array.from(new Set(state.project.registry.blocks.map(function (block) { return block.kind; }))).filter(function (kind) { return kind !== 'Skill'; });
+          newNodeKindSelect.innerHTML = availableKinds.map(function (kind) { return '<option value=\"' + escapeHtml(kind) + '\">' + escapeHtml(kind) + '</option>'; }).join('');
+          edgeTargetSelect.innerHTML = state.project.nodes
+            .filter(function (node) { return node.id !== state.selectedNodeId; })
+            .map(function (node) { return '<option value=\"' + escapeHtml(node.id) + '\">' + escapeHtml(node.label + ' · ' + node.id) + '</option>'; })
+            .join('');
+          edgeSelect.innerHTML = state.project.edges.map(function (edge) { return '<option value=\"' + escapeHtml(edge.id) + '\">' + escapeHtml(edge.from + ' → ' + edge.to + (edge.label ? ' (' + edge.label + ')' : '')) + '</option>'; }).join('');
+          if (!selected) {
+            editorStatusEl.textContent = 'Select a node to edit its label/config, or add a new node.';
+            nodeLabelInput.value = '';
+            nodeConfigInput.value = '';
+            return;
+          }
+          editorStatusEl.textContent = 'Editing ' + selected.id + ' (' + selected.kind + ')';
+          nodeLabelInput.value = selected.label || '';
+          nodeConfigInput.value = selected.config ? JSON.stringify(selected.config, null, 2) : '';
+        }
+
         function renderProject() {
           const box = computeViewBox(state.project.layout);
           canvas.setAttribute('viewBox', box.join(' '));
@@ -215,11 +281,18 @@ export function renderViewerHtml(projectName: string): string {
           }
 
           nodeListEl.innerHTML = state.project.nodes.map(function (node) {
-            return '<li><strong>' + escapeHtml(node.label) + '</strong><span>' + escapeHtml(node.kind) + ' · ' + escapeHtml(node.id) + '</span></li>';
+            return '<li class=\"' + (state.selectedNodeId === node.id ? 'is-selected' : '') + '\" data-node-id=\"' + escapeHtml(node.id) + '\"><strong>' + escapeHtml(node.label) + '</strong><span>' + escapeHtml(node.kind) + ' · ' + escapeHtml(node.id) + '</span></li>';
           }).join('');
+          Array.from(nodeListEl.querySelectorAll('li[data-node-id]')).forEach(function (item) {
+            item.addEventListener('click', function () {
+              state.selectedNodeId = item.getAttribute('data-node-id');
+              renderProject();
+            });
+          });
 
           renderEdges();
           renderNodes();
+          renderEditor();
         }
 
         function renderTrace() {
@@ -227,7 +300,9 @@ export function renderViewerHtml(projectName: string): string {
           state.activeNodes = new Set(events.filter(function (e) { return e.status === 'ok'; }).map(function (e) { return e.nodeId; }));
           state.errorNodes = new Set(events.filter(function (e) { return e.status === 'error'; }).map(function (e) { return e.nodeId; }));
           if (state.trace.source === 'none' || events.length === 0) {
-            traceStatusEl.textContent = 'No trace data. Run harness-editor sandbox to produce events.';
+            traceStatusEl.textContent = 'No trace data. Run oh-my-openharness sandbox to produce events.';
+          } else if (state.trace.staleTrace) {
+            traceStatusEl.textContent = 'Trace is stale for the current graph hash. Re-run sandbox to refresh runtime overlays.';
           } else {
             traceStatusEl.textContent = (state.trace.path || '') + ' · ' + events.length + ' events';
           }
@@ -308,8 +383,43 @@ export function renderViewerHtml(projectName: string): string {
           }
         }
 
+        async function mutateProject(body) {
+          const res = await fetch('/api/project/mutate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          if (!res.ok) throw new Error('Failed to mutate project: ' + res.status);
+          state.project = await res.json();
+          renderProject();
+          await loadTrace();
+        }
+
         refreshBtn.addEventListener('click', function () { loadProject().then(loadTrace).catch(function (e) { alert(e.message); }); });
         saveBtn.addEventListener('click', saveLayout);
+        saveNodeBtn.addEventListener('click', async function () {
+          if (!state.selectedNodeId) return;
+          let parsedConfig;
+          if (nodeConfigInput.value.trim()) parsedConfig = JSON.parse(nodeConfigInput.value);
+          await mutateProject({ action: 'update-node', nodeId: state.selectedNodeId, label: nodeLabelInput.value, ...(parsedConfig !== undefined ? { config: parsedConfig } : {}) });
+        });
+        deleteNodeBtn.addEventListener('click', async function () {
+          if (!state.selectedNodeId) return;
+          const toDelete = state.selectedNodeId;
+          state.selectedNodeId = null;
+          await mutateProject({ action: 'delete-node', nodeId: toDelete });
+        });
+        addNodeBtn.addEventListener('click', async function () {
+          await mutateProject({ action: 'add-node', kind: newNodeKindSelect.value, label: newNodeLabelInput.value || newNodeKindSelect.value });
+        });
+        addEdgeBtn.addEventListener('click', async function () {
+          if (!state.selectedNodeId || !edgeTargetSelect.value) return;
+          await mutateProject({ action: 'add-edge', from: state.selectedNodeId, to: edgeTargetSelect.value });
+        });
+        deleteEdgeBtn.addEventListener('click', async function () {
+          if (!edgeSelect.value) return;
+          await mutateProject({ action: 'delete-edge', edgeId: edgeSelect.value });
+        });
 
         loadProject().then(loadTrace).catch(function (err) {
           summaryEl.innerHTML = '<span class="confirm">' + escapeHtml(err.message) + '</span>';

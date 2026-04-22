@@ -21,8 +21,16 @@ describe('generateHarnessProject', () => {
     expect(project.authoring.confirmationRequests.every((request) => request.confirmed === false)).toBe(true);
   });
 
+  test('persists the selected runtime target before writing runtime-specific artifacts', () => {
+    const project = generateHarnessProject('sample', 'Create a harness with MCP server', 'codex');
+    expect(project.manifest.targetRuntime).toBe('codex');
+    expect(project.manifest.supportedRuntimes).toEqual(['codex']);
+    expect(project.authoring.compatibleRuntimes).toEqual(['codex']);
+    expect(project.authoring.summary).toContain('Codex-native');
+  });
+
   test('writes canonical project structure with semantic/layout separation and registry snapshot', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'harness-editor-project-'));
+    const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-project-'));
     const projectDir = join(root, 'demo');
     const project = generateHarnessProject('demo', 'Create a harness with review loop and custom runtime block');
     await writeHarnessProject(projectDir, project);

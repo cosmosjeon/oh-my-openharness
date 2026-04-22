@@ -7,12 +7,13 @@ import { loadHarnessProject, writeHarnessProject } from '../src/core/project';
 import { compileClaude } from '../src/compiler/claude';
 import { validateProject } from '../src/sandbox/validate';
 import { renderTraceHtml } from '../src/web/report';
+import { startHarnessEditorServer } from '../src/web/server';
 import type { GraphEdge, GraphNode, LayoutNode, TraceEvent } from '../src/core/types';
 
 const RICH_PROMPT = 'Create a review harness with approvals, state memory, MCP server support, and retry loop';
 
 async function buildWrittenProject(name: string, prompt = RICH_PROMPT): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'harness-editor-gui-shell-'));
+  const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-gui-shell-'));
   const projectDir = join(root, name);
   const project = applyRiskConfirmations(generateHarnessProject(name, prompt), true);
   await writeHarnessProject(projectDir, project);
@@ -64,15 +65,31 @@ describe('GUI shell contract: loading canonical project data', () => {
     expect(reloaded.layout).not.toEqual(loaded.layout);
     expect(reloaded.layout.length).toBe(loaded.layout.length);
   });
+
+  test('viewer HTML exposes editor controls beyond layout-only actions', async () => {
+    const projectDir = await buildWrittenProject('gui-shell-editor-controls');
+    const handle = await startHarnessEditorServer({ projectDir, host: '127.0.0.1' });
+    try {
+      const html = await fetch(handle.url).then((res) => res.text());
+      expect(html).toContain('Save node');
+      expect(html).toContain('Add node');
+      expect(html).toContain('Delete node');
+      expect(html).toContain('/api/project/mutate');
+    } finally {
+      await handle.close();
+    }
+  });
 });
 
 describe('GUI shell contract: runtime trace and error surfaces', () => {
   test('sandbox trace events carry every field a GUI trace panel needs to render rows', async () => {
     const projectDir = await buildWrittenProject('gui-shell-trace');
+    const project = await loadHarnessProject(projectDir);
     const result = await validateProject(projectDir);
 
     expect(result.success).toBe(true);
     expect(result.events.length).toBeGreaterThan(0);
+    const nodeIds = new Set(project.nodes.map((node) => node.id));
 
     for (const event of result.events as TraceEvent[]) {
       expect(typeof event.timestamp).toBe('string');
@@ -90,6 +107,9 @@ describe('GUI shell contract: runtime trace and error surfaces', () => {
         'failure',
         'mcp-server'
       ]).toContain(event.eventType);
+      expect(nodeIds.has(event.nodeId)).toBe(true);
+      expect(event.metadata?.graphHash).toBe(project.manifest.graphHash);
+      expect(typeof event.metadata?.runtime).toBe('string');
     }
 
     const html = await readFile(result.htmlReport, 'utf8');
@@ -99,7 +119,7 @@ describe('GUI shell contract: runtime trace and error surfaces', () => {
   });
 
   test('forced failure exposes an error event the GUI can highlight', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'harness-editor-gui-shell-fail-'));
+    const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-gui-shell-fail-'));
     const projectDir = join(root, 'gui-shell-fail');
     const project = applyRiskConfirmations(generateHarnessProject('gui-shell-fail', 'Create a harness __FORCE_SANDBOX_FAILURE__'), true);
     await writeHarnessProject(projectDir, project);
@@ -114,6 +134,13 @@ describe('GUI shell contract: runtime trace and error surfaces', () => {
     expect(html).toContain('is-error');
     expect(html).toContain('Error events');
     expect(html).toContain('Hook command failed');
+  });
+
+  test('project persistence records a graph hash the trace layer can compare against', async () => {
+    const projectDir = await buildWrittenProject('gui-shell-graph-hash');
+    const loaded = await loadHarnessProject(projectDir);
+    expect(typeof loaded.manifest.graphHash).toBe('string');
+    expect(loaded.manifest.graphHash?.length).toBeGreaterThan(0);
   });
 
   test('renderTraceHtml escapes user-controlled trace data (GUI XSS guard)', () => {

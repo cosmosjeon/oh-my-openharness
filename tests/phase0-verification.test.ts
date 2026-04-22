@@ -15,7 +15,7 @@ describe('Phase 0 verification coverage', () => {
   });
 
   test('compileClaude writes a valid Claude package with required surfaces and optional MCP config', async () => {
-    const out = await mkdtemp(join(tmpdir(), 'harness-editor-compile-verify-'));
+    const out = await mkdtemp(join(tmpdir(), 'oh-my-openharness-compile-verify-'));
     const project = applyRiskConfirmations(generateHarnessProject('verify-compile', 'Create a harness with approval flow and mcp server'), true);
     const result = await compileClaude(project, out);
     const pluginRoot = join(out, '.claude-plugin');
@@ -27,7 +27,7 @@ describe('Phase 0 verification coverage', () => {
   });
 
   test('generated projects validate in isolated sandbox with structured trace output and no manual edits', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'harness-editor-phase0-'));
+    const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-phase0-'));
     const projectDir = join(root, 'verify-phase0');
     const project = applyRiskConfirmations(generateHarnessProject('verify-phase0', 'Create a review harness with approvals, state memory, MCP server support, and retry loop'), true);
     await writeHarnessProject(projectDir, project);
@@ -38,7 +38,7 @@ describe('Phase 0 verification coverage', () => {
   });
 
   test('trace reports surface failure context for a GUI consumer', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'harness-editor-phase0-failure-'));
+    const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-phase0-failure-'));
     const projectDir = join(root, 'verify-phase0-failure');
     const project = applyRiskConfirmations(generateHarnessProject('verify-phase0-failure', 'Create a harness __FORCE_SANDBOX_FAILURE__'), true);
     await writeHarnessProject(projectDir, project);

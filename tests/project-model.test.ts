@@ -8,7 +8,7 @@ import { BLOCK_REGISTRY, COMPOSITE_PATTERNS } from '../src/core/registry';
 
 describe('canonical harness project model', () => {
   test('writes Phase 0 project shape with separate semantic graph and layout', async () => {
-    const projectDir = await mkdtemp(join(tmpdir(), 'harness-editor-project-shape-'));
+    const projectDir = await mkdtemp(join(tmpdir(), 'oh-my-openharness-project-shape-'));
     const project = generateHarnessProject('phase0-shape', 'Create a harness with approval flow, review loop, mcp server, and state memory');
     await writeHarnessProject(projectDir, project);
 

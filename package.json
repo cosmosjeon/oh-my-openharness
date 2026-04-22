@@ -1,13 +1,21 @@
 {
-  "name": "harness-editor",
+  "name": "oh-my-openharness",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "CLI-first harness-maker for AI coding agent harnesses",
+  "description": "Bun-first runtime setup, editor, and export orchestration for AI coding agent workflows",
   "license": "MIT",
+  "files": [
+    "bin/oh-my-openharness",
+    "src",
+    "README.md",
+    "tsconfig.json"
+  ],
+  "bin": {
+    "oh-my-openharness": "bin/oh-my-openharness"
+  },
   "scripts": {
     "dev": "bun run src/index.ts",
-    "test": "bun test tests/*.test.ts",
+    "test": "bun test --timeout 20000 tests/*.test.ts",
     "typecheck": "bunx tsc --noEmit",
     "demo": "bun run src/index.ts demo --name demo-harness --prompt \"Create a review harness with approvals, MCP server support, and retry loop\""
   },

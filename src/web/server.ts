@@ -167,8 +167,29 @@ function nextEdgeId(edges: GraphEdge[]): string {
   return candidate;
 }
 
+function mergeRefreshedAuthoring(project: HarnessProject, refreshedProject: HarnessProject): HarnessProject['authoring'] {
+  const previousDerivedAuthoring = refreshDerivedProject(project).authoring;
+  const confirmationStateById = new Map(project.authoring.confirmationRequests.map((request) => [request.id, request.confirmed]));
+  const preservedWarnings = project.authoring.warnings.filter((warning) => !previousDerivedAuthoring.warnings.includes(warning));
+
+  return {
+    ...refreshedProject.authoring,
+    summary: project.authoring.summary !== previousDerivedAuthoring.summary ? project.authoring.summary : refreshedProject.authoring.summary,
+    warnings: [...new Set([...refreshedProject.authoring.warnings, ...preservedWarnings])],
+    confirmationRequests: refreshedProject.authoring.confirmationRequests.map((request) => ({
+      ...request,
+      confirmed: confirmationStateById.get(request.id) ?? request.confirmed
+    })),
+    compatibleRuntimes: project.authoring.compatibleRuntimes.length > 0 ? project.authoring.compatibleRuntimes : refreshedProject.authoring.compatibleRuntimes
+  };
+}
+
 async function persistProject(projectDir: string, project: HarnessProject): Promise<ProjectPayload> {
-  await writeHarnessProject(projectDir, refreshDerivedProject(project));
+  const refreshedProject = refreshDerivedProject(project);
+  await writeHarnessProject(projectDir, {
+    ...refreshedProject,
+    authoring: mergeRefreshedAuthoring(project, refreshedProject)
+  });
   const reloaded = await loadHarnessProject(projectDir);
   return toProjectPayload(reloaded);
 }

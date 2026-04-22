@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applyRiskConfirmations, generateHarnessProject } from '../src/core/generator';
+import { applyHostAuthoring } from '../src/core/host-authoring';
 import { writeHarnessProject } from '../src/core/project';
 import { startHarnessEditorServer, type ServerHandle } from '../src/web/server';
 
@@ -171,6 +172,48 @@ describe('oh-my-openharness local server', () => {
     expect(deleteNode.status).toBe(200);
     const deletePayload = deleteNode.body as { nodes: Array<{ id: string }> };
     expect(deletePayload.nodes.some((node) => node.id === addedNode!.id)).toBe(false);
+  });
+
+  test('editor mutations preserve confirmed gates and host-authored guidance', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-server-authoring-'));
+    const projectDir = join(root, 'server-authoring');
+    const project = applyHostAuthoring(
+      applyRiskConfirmations(generateHarnessProject('server-authoring', 'Create a harness with full access and review loop', 'codex'), true),
+      {
+        runtime: 'codex',
+        summary: 'Codex-guided authoring summary',
+        emphasis: ['state', 'review'],
+        warnings: ['Host runtime returned a compact plan'],
+        rawOutput: '{"summary":"Codex-guided authoring summary","emphasis":["state","review"],"warnings":["Host runtime returned a compact plan"]}',
+        command: 'codex exec <prompt>'
+      }
+    );
+    await writeHarnessProject(projectDir, project);
+
+    const authoringHandle = await startHarnessEditorServer({ projectDir, host: '127.0.0.1' });
+    try {
+      const mutation = await fetchJson(`${authoringHandle.url}/api/project/mutate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add-node', kind: 'Condition', label: 'Editor-added condition', x: 320, y: 140 })
+      });
+
+      expect(mutation.status).toBe(200);
+      const payload = mutation.body as {
+        authoring: {
+          summary: string;
+          warnings: string[];
+          confirmationRequests: Array<{ confirmed: boolean }>;
+        };
+      };
+      expect(payload.authoring.summary).toBe('Codex-guided authoring summary');
+      expect(payload.authoring.warnings).toContain('Host runtime returned a compact plan');
+      expect(payload.authoring.confirmationRequests.length).toBeGreaterThan(0);
+      expect(payload.authoring.confirmationRequests.every((request) => request.confirmed)).toBe(true);
+    } finally {
+      await authoringHandle.close();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test('rejects malformed layout payloads', async () => {

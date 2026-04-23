@@ -128,7 +128,16 @@ export function renderViewerHtml(projectName: string): string {
     </aside>
     <script>
       (function () {
-        const state = { project: null, trace: { events: [] }, dirty: false, dragNodeId: null, selectedNodeId: null, activeNodes: new Set(), errorNodes: new Set() };
+        const state = {
+          project: null,
+          trace: { events: [] },
+          dirty: false,
+          dragNodeId: null,
+          selectedNodeId: null,
+          activeNodes: new Set(),
+          errorNodes: new Set(),
+          tracePolling: { delayMs: 4000, error: null, timeoutId: null }
+        };
         const canvas = document.getElementById('canvas');
         const nodesLayer = document.getElementById('nodes-layer');
         const edgesLayer = document.getElementById('edges-layer');
@@ -312,6 +321,9 @@ export function renderViewerHtml(projectName: string): string {
           } else {
             traceStatusEl.textContent = (state.trace.path || '') + ' · ' + events.length + ' events';
           }
+          if (state.tracePolling.error) {
+            traceStatusEl.textContent += ' · auto-refresh warning: ' + state.tracePolling.error;
+          }
           traceListEl.innerHTML = events.map(function (event) {
             return '<div class="trace-item ' + (event.status === 'error' ? 'is-error' : '') + '" data-node-id="' + escapeHtml(event.nodeId) + '">' +
               '<header><strong>' + escapeHtml(event.eventType) + '</strong><span class="meta">' + escapeHtml(event.status) + '</span></header>' +
@@ -398,6 +410,37 @@ export function renderViewerHtml(projectName: string): string {
           renderTrace();
         }
 
+        function resetTracePollingState() {
+          state.tracePolling.delayMs = 4000;
+          state.tracePolling.error = null;
+        }
+
+        function setTracePollingError(message) {
+          const seconds = Math.round(state.tracePolling.delayMs / 1000);
+          state.tracePolling.error = message + ' Retrying in about ' + seconds + 's.';
+          renderTrace();
+        }
+
+        function scheduleNextTracePoll() {
+          if (state.tracePolling.timeoutId) clearTimeout(state.tracePolling.timeoutId);
+          state.tracePolling.timeoutId = setTimeout(async function () {
+            if (state.dragNodeId) {
+              scheduleNextTracePoll();
+              return;
+            }
+            try {
+              await loadTrace();
+              resetTracePollingState();
+            } catch (err) {
+              const message = err && err.message ? err.message : 'Trace refresh failed.';
+              setTracePollingError(message);
+              state.tracePolling.delayMs = Math.min(state.tracePolling.delayMs * 2, 30000);
+            } finally {
+              scheduleNextTracePoll();
+            }
+          }, state.tracePolling.delayMs);
+        }
+
         async function saveLayout() {
           if (!state.project) return;
           saveBtn.disabled = true;
@@ -460,7 +503,7 @@ export function renderViewerHtml(projectName: string): string {
           summaryEl.innerHTML = '<span class="confirm">' + escapeHtml(err.message) + '</span>';
         });
 
-        setInterval(function () { if (!state.dragNodeId) loadTrace().catch(function () {}); }, 4000);
+        scheduleNextTracePoll();
       })();
     </script>
   </body>

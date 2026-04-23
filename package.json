@@ -1,6 +1,6 @@
 {
   "name": "oh-my-openharness",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "Bun-first runtime setup, editor, and export orchestration for AI coding agent workflows",
   "license": "MIT",

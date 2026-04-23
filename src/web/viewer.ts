@@ -6,15 +6,7 @@ const escapeHtml = (value: string): string =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
-const escapeScriptJson = (value: unknown): string =>
-  JSON.stringify(value)
-    .replaceAll('<', '\\u003c')
-    .replaceAll('>', '\\u003e')
-    .replaceAll('&', '\\u0026')
-    .replaceAll('\u2028', '\\u2028')
-    .replaceAll('\u2029', '\\u2029');
-
-export function renderViewerHtml(projectName: string, apiToken: string): string {
+export function renderViewerHtml(projectName: string): string {
   return `<!doctype html>
 <html>
   <head>
@@ -98,6 +90,7 @@ export function renderViewerHtml(projectName: string, apiToken: string): string 
       <section>
         <h2>Editor</h2>
         <div class="editor-grid">
+          <label>Mutation token<input id="api-token-input" type="password" autocomplete="off" placeholder="Paste the token printed by \`serve\`" /></label>
           <div id="editor-status" class="status">Select a node to edit its label/config, or add a new node.</div>
           <label>Selected node label<input id="node-label" type="text" /></label>
           <label>Selected node config (JSON)<textarea id="node-config"></textarea></label>
@@ -135,7 +128,6 @@ export function renderViewerHtml(projectName: string, apiToken: string): string 
     </aside>
     <script>
       (function () {
-        const viewerAuth = ${escapeScriptJson({ apiToken })};
         const state = { project: null, trace: { events: [] }, dirty: false, dragNodeId: null, selectedNodeId: null, activeNodes: new Set(), errorNodes: new Set() };
         const canvas = document.getElementById('canvas');
         const nodesLayer = document.getElementById('nodes-layer');
@@ -148,6 +140,8 @@ export function renderViewerHtml(projectName: string, apiToken: string): string 
         const runtimePill = document.getElementById('runtime-pill');
         const saveBtn = document.getElementById('save-btn');
         const refreshBtn = document.getElementById('refresh-btn');
+        const authPill = document.getElementById('auth-pill');
+        const apiTokenInput = document.getElementById('api-token-input');
         const editorStatusEl = document.getElementById('editor-status');
         const nodeLabelInput = document.getElementById('node-label');
         const nodeConfigInput = document.getElementById('node-config');
@@ -160,6 +154,8 @@ export function renderViewerHtml(projectName: string, apiToken: string): string 
         const addEdgeBtn = document.getElementById('add-edge-btn');
         const edgeSelect = document.getElementById('edge-select');
         const deleteEdgeBtn = document.getElementById('delete-edge-btn');
+
+        const mutationTokenStorageKey = 'omoh-mutation-token';
 
         function escapeHtml(value) {
           return String(value == null ? '' : value)
@@ -369,8 +365,25 @@ export function renderViewerHtml(projectName: string, apiToken: string): string 
           return payload;
         }
 
+        function currentMutationToken() {
+          return apiTokenInput.value.trim();
+        }
+
+        function refreshAuthPill() {
+          authPill.textContent = currentMutationToken() ? 'Writes unlocked' : 'Writes protected';
+        }
+
+        function storeMutationToken() {
+          const token = currentMutationToken();
+          if (token) sessionStorage.setItem(mutationTokenStorageKey, token);
+          else sessionStorage.removeItem(mutationTokenStorageKey);
+          refreshAuthPill();
+        }
+
         function mutationHeaders(extraHeaders) {
-          return Object.assign({ 'x-omoh-api-token': viewerAuth.apiToken }, extraHeaders || {});
+          const token = currentMutationToken();
+          if (!token) throw new Error('Enter the mutation token printed by oh-my-openharness serve before editing.');
+          return Object.assign({ 'x-omoh-api-token': token }, extraHeaders || {});
         }
 
         async function loadProject() {
@@ -414,6 +427,10 @@ export function renderViewerHtml(projectName: string, apiToken: string): string 
         }
 
         refreshBtn.addEventListener('click', function () { loadProject().then(loadTrace).catch(function (e) { alert(e.message); }); });
+        apiTokenInput.value = sessionStorage.getItem(mutationTokenStorageKey) || '';
+        refreshAuthPill();
+        apiTokenInput.addEventListener('change', storeMutationToken);
+        apiTokenInput.addEventListener('blur', storeMutationToken);
         saveBtn.addEventListener('click', saveLayout);
         saveNodeBtn.addEventListener('click', async function () {
           if (!state.selectedNodeId) return;

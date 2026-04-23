@@ -323,7 +323,7 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
   try {
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       const project = await loadHarnessProject(projectDir);
-      sendHtml(res, 200, renderViewerHtml(project.manifest.name, options.apiToken ?? ''));
+      sendHtml(res, 200, renderViewerHtml(project.manifest.name));
       return;
     }
 

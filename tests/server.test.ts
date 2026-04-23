@@ -75,7 +75,7 @@ describe('oh-my-openharness local server', () => {
     expect(html).toContain('/api/project');
     expect(html).toContain('/api/trace');
     expect(html).toContain('Writes protected');
-    expect(html).toContain('x-omoh-api-token');
+    expect(html).toContain('Mutation token');
   });
 
   test('reports no trace when sandbox has not run', async () => {

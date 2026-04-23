@@ -19,6 +19,12 @@ OMOH currently supports:
 - isolated sandbox validation with structured trace output
 - bounded import-seed flow from runtime bundles back into the canonical project
 
+Operational prerequisite honesty:
+
+- OMOH is Bun-first for install/distribution, but generated runtime hooks and MCP bridge scripts currently execute with `node`, so **Node.js must also be available** on the machine running compiled/exported bundles.
+- `author` depends on the selected host CLI being **installed and already authenticated** (`claude`, `opencode`, or `codex`).
+- `serve` is intended for local use. By default it binds to loopback, and any wider exposure should be treated as an explicit security decision.
+
 Important honesty note: the browser editor is shared across runtimes. The current explicit phase-5 serve/editor proof set is strongest for Claude/OpenCode. Codex stays green through the shared editor contract plus Codex-specific author/export/import/sandbox coverage.
 
 ## Non-goals in this repo
@@ -53,7 +59,7 @@ oh-my-openharness import  --from <dir> [--name <name>] [--dir <dir>] [--runtime 
 oh-my-openharness compile --project <dir> [--out <dir>]
 oh-my-openharness export  --project <dir> [--out <dir>]
 oh-my-openharness sandbox --project <dir> [--out <dir>] [--fail-hook <hook>]
-oh-my-openharness serve   --project <dir> [--port <port>] [--host <host>] [--trace <file>]
+oh-my-openharness serve   --project <dir> [--port <port>] [--host <host>] [--trace <file>] [--api-token <token>]
 oh-my-openharness catalog
 oh-my-openharness demo    --name <name> --prompt <prompt> [--dir <dir>]
 ```

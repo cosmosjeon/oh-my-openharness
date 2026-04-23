@@ -271,7 +271,7 @@ function ensureSupportedForApply(plan: RuntimeSetupPlan) {
 }
 
 function claudeSkillContent(selectedRuntimes: SetupRuntime[], configRoot: string): string {
-  return `---\nname: oh-my-openharness\ndescription: OMOH Claude setup bridge\n---\n\n# oh-my-openharness\n\nThis Claude runtime was configured by OMOH Phase 1 setup.\n\n## Selected runtimes\n- ${selectedRuntimes.join(', ')}\n\n## Config root\n- ${configRoot}\n\n## Contract\n- Real authoring remains inside Claude Code.\n- OMOH owns setup, orchestration, browser editing, and export.\n- This Phase 1 bridge proves the Claude install surface and will be widened in later phases.\n`;
+  return `---\nname: oh-my-openharness\ndescription: OMOH Claude setup bridge\n---\n\n# oh-my-openharness\n\nThis Claude runtime was configured by OMOH.\n\n## Selected runtimes\n- ${selectedRuntimes.join(', ')}\n\n## Config root\n- ${configRoot}\n\n## Contract\n- Real authoring remains inside Claude Code.\n- OMOH owns setup, orchestration, browser editing, export, and validation around the canonical project.\n- Host CLI readiness still depends on a valid Claude installation and authentication state.\n`;
 }
 
 function opencodeSkillContent(selectedRuntimes: SetupRuntime[], configRoot: string): string {
@@ -303,7 +303,7 @@ async function writeClaudeBundle(entry: RuntimeCapabilityMatrixEntry, selectedRu
     join(entry.installRoot, 'hooks', 'hooks.json'),
     JSON.stringify(
       {
-        description: 'OMOH Phase 1 Claude setup bridge',
+        description: 'OMOH Claude setup bridge',
         hooks: {}
       },
       null,
@@ -452,7 +452,7 @@ function installShapeCheck(entry: RuntimeCapabilityMatrixEntry): RuntimeDoctorEn
   if (entry.installStatus === 'scaffolded') {
     return {
       status: 'warning',
-      details: [`Scaffold snapshot is present at ${entry.installRoot}, but ${entry.displayName} integration remains scaffold-only in Phase 1.`]
+      details: [`Scaffold snapshot is present at ${entry.installRoot}, but ${entry.displayName} integration remains scaffold-only in the current bridge mode.`]
     };
   }
   if (entry.installStatus === 'missing-binary') {

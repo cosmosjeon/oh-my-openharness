@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -12,12 +13,14 @@ export interface ServerOptions {
   port?: number;
   host?: string;
   tracePath?: string;
+  apiToken?: string;
 }
 
 export interface ServerHandle {
   url: string;
   port: number;
   host: string;
+  apiToken: string;
   close(): Promise<void>;
 }
 
@@ -132,6 +135,52 @@ function sendHtml(res: ServerResponse, status: number, body: string) {
 
 function sendNotFound(res: ServerResponse, message: string) {
   sendJson(res, 404, { error: message });
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  return typeof value === 'string' ? value : Array.isArray(value) ? value[0] ?? null : null;
+}
+
+function formatUrlHost(host: string): string {
+  return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
+
+function createApiToken(): string {
+  return randomBytes(24).toString('base64url');
+}
+
+function readMutationToken(req: IncomingMessage): string | null {
+  const headerToken = firstHeaderValue(req.headers['x-omoh-api-token']);
+  if (headerToken) return headerToken;
+  const authHeader = firstHeaderValue(req.headers.authorization);
+  if (!authHeader) return null;
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  return match?.[1] ?? null;
+}
+
+function hasAllowedMutationOrigin(req: IncomingMessage): boolean {
+  const origin = firstHeaderValue(req.headers.origin);
+  if (!origin) return true;
+  const host = firstHeaderValue(req.headers.host);
+  if (!host) return false;
+  try {
+    const parsedOrigin = new URL(origin);
+    return (parsedOrigin.protocol === 'http:' || parsedOrigin.protocol === 'https:') && parsedOrigin.host === host;
+  } catch {
+    return false;
+  }
+}
+
+function authorizeMutationRequest(req: IncomingMessage, res: ServerResponse, apiToken: string): boolean {
+  if (readMutationToken(req) !== apiToken) {
+    sendJson(res, 401, { error: 'Mutating requests require a valid x-omoh-api-token header.' });
+    return false;
+  }
+  if (!hasAllowedMutationOrigin(req)) {
+    sendJson(res, 403, { error: 'Mutating requests must originate from the same origin as the editor server.' });
+    return false;
+  }
+  return true;
 }
 
 function isLayoutNodeArray(value: unknown): value is LayoutNode[] {
@@ -274,7 +323,7 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
   try {
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       const project = await loadHarnessProject(projectDir);
-      sendHtml(res, 200, renderViewerHtml(project.manifest.name));
+      sendHtml(res, 200, renderViewerHtml(project.manifest.name, options.apiToken ?? ''));
       return;
     }
 
@@ -292,11 +341,12 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
     }
 
     if (req.method === 'GET' && url.pathname === '/api/health') {
-      sendJson(res, 200, { ok: true, projectDir });
+      sendJson(res, 200, { ok: true, mutationProtection: 'token+same-origin' });
       return;
     }
 
     if (req.method === 'POST' && url.pathname === '/api/layout') {
+      if (!authorizeMutationRequest(req, res, options.apiToken ?? '')) return;
       const body = await readRequestBody(req);
       let parsed: unknown;
       try {
@@ -317,6 +367,7 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
     }
 
     if (req.method === 'POST' && url.pathname === '/api/project/mutate') {
+      if (!authorizeMutationRequest(req, res, options.apiToken ?? '')) return;
       const body = await readRequestBody(req);
       let parsed: unknown;
       try {
@@ -349,9 +400,11 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
 export async function startHarnessEditorServer(options: ServerOptions): Promise<ServerHandle> {
   const host = options.host ?? '127.0.0.1';
   const requestedPort = options.port ?? 0;
+  const apiToken = options.apiToken?.trim() || createApiToken();
+  const resolvedOptions: ServerOptions = { ...options, host, apiToken };
 
   const server: Server = createServer((req, res) => {
-    handleRequest(req, res, options).catch((error) => {
+    handleRequest(req, res, resolvedOptions).catch((error) => {
       sendJson(res, 500, { error: (error as Error).message });
     });
   });
@@ -369,9 +422,10 @@ export async function startHarnessEditorServer(options: ServerOptions): Promise<
   const boundPort = address.port;
 
   return {
-    url: `http://${host}:${boundPort}`,
+    url: `http://${formatUrlHost(host)}:${boundPort}`,
     host,
     port: boundPort,
+    apiToken,
     close: () =>
       new Promise<void>((resolvePromise, rejectPromise) => {
         server.close((error) => {

@@ -33,7 +33,7 @@ Commands:
   compile --project <dir> [--out <dir>]
   export --project <dir> [--out <dir>]
   sandbox --project <dir> [--out <dir>] [--fail-hook <hook>]
-  serve --project <dir> [--port <port>] [--host <host>] [--trace <file>]
+  serve --project <dir> [--port <port>] [--host <host>] [--trace <file>] [--api-token <token>]
   catalog
   demo --name <name> --prompt <prompt> [--dir <dir>]
 
@@ -191,11 +191,18 @@ async function catalog() {
   console.log(JSON.stringify({ blocks: BLOCK_REGISTRY, composites: COMPOSITE_PATTERNS }, null, 2));
 }
 
-async function serveProject(projectDir: string, portValue?: string, host?: string, tracePath?: string) {
+async function serveProject(projectDir: string, portValue?: string, host?: string, tracePath?: string, apiToken?: string) {
   const port = portValue ? Number(portValue) : 0;
   if (portValue && !Number.isFinite(port)) throw new Error('--port must be a number');
-  const handle = await startHarnessEditorServer({ projectDir: resolve(projectDir), port: port || 0, host, ...(tracePath ? { tracePath: resolve(tracePath) } : {}) });
-  console.log(JSON.stringify({ url: handle.url, host: handle.host, port: handle.port, projectDir: resolve(projectDir) }, null, 2));
+  const resolvedApiToken = apiToken ?? process.env.OMOH_EDITOR_API_TOKEN;
+  const handle = await startHarnessEditorServer({
+    projectDir: resolve(projectDir),
+    port: port || 0,
+    host,
+    ...(tracePath ? { tracePath: resolve(tracePath) } : {}),
+    ...(resolvedApiToken ? { apiToken: resolvedApiToken } : {})
+  });
+  console.log(JSON.stringify({ url: handle.url, host: handle.host, port: handle.port, apiToken: handle.apiToken, mutationProtection: 'token+same-origin' }, null, 2));
   const shutdown = async () => {
     try {
       await handle.close();
@@ -331,6 +338,7 @@ const failHook = parsed.flags.get('fail-hook');
 const port = parsed.flags.get('port');
 const host = parsed.flags.get('host');
 const tracePath = parsed.flags.get('trace');
+const apiToken = parsed.flags.get('api-token');
 const runtimes = parsed.flags.get('runtimes');
 const runtimeFlag = parsed.flags.get('runtime');
 const runtime = parseRuntimeTarget(runtimeFlag);
@@ -384,7 +392,7 @@ if (!parsed.command) {
       break;
     case 'serve':
       if (!projectDir) throw new Error('--project is required');
-      await serveProject(projectDir, port, host, tracePath);
+      await serveProject(projectDir, port, host, tracePath, apiToken);
       break;
     case 'demo':
       await demo(name, prompt, dir, runtime);

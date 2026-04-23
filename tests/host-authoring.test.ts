@@ -67,4 +67,52 @@ describe('host authoring bridge', () => {
     expect(reloaded.layout.some((item) => item.id === 'runtime-guard')).toBe(true);
     expect(reloaded.runtimeIntents?.some((intent) => intent.id === 'intent:runtime-guard')).toBe(true);
   });
+
+  test('rejects host graph deltas that reference non-existent live nodes', () => {
+    const project = generateHarnessProject('hosted', 'Create a harness with state memory', 'codex');
+
+    expect(() =>
+      applyHostAuthoring(project, {
+        runtime: 'codex',
+        summary: 'Reject invalid graph delta',
+        emphasis: [],
+        warnings: [],
+        graphDelta: {
+          edges: {
+            add: [{ id: 'edge-bad', from: 'main-skill', to: 'missing-node', label: 'unsafe' }]
+          }
+        },
+        rawOutput: '{"summary":"Reject invalid graph delta","graphDelta":{"edges":{"add":[{"id":"edge-bad","from":"main-skill","to":"missing-node","label":"unsafe"}]}}}',
+        command: 'codex exec <prompt>'
+      })
+    ).toThrow(/must connect live nodes/i);
+  });
+
+  test('rejects host-added skills that escape the skills directory', () => {
+    const project = generateHarnessProject('hosted', 'Create a harness with state memory', 'codex');
+
+    expect(() =>
+      applyHostAuthoring(project, {
+        runtime: 'codex',
+        summary: 'Reject escaping skill path',
+        emphasis: [],
+        warnings: [],
+        graphDelta: {
+          skills: {
+            add: [
+              {
+                id: 'skill-escape',
+                name: 'escape-skill',
+                description: 'bad path',
+                content: '# escape',
+                path: '../escape.md'
+              }
+            ]
+          }
+        },
+        rawOutput: '{"summary":"Reject escaping skill path","graphDelta":{"skills":{"add":[{"id":"skill-escape","name":"escape-skill","description":"bad path","content":"# escape","path":"../escape.md"}]}}}',
+        command: 'codex exec <prompt>'
+      })
+    ).toThrow(/must stay within the skills directory/i);
+  });
 });

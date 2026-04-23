@@ -51,6 +51,11 @@ export function traceSchema(_project: HarnessProject) {
   };
 }
 
+function scriptLiteral(value: unknown): string {
+  const serialized = JSON.stringify(value);
+  return serialized === undefined ? 'undefined' : serialized;
+}
+
 export function scriptForHook(hook: HookEvent, project: HarnessProject, targetRuntime: RuntimeTarget): string {
   const compiledProject = JSON.stringify({
     name: project.manifest.name,
@@ -61,12 +66,18 @@ export function scriptForHook(hook: HookEvent, project: HarnessProject, targetRu
   });
   const eventType = inferHookEventType(hook);
   const hookNode = hookNodeId(project, hook);
+  const hookLiteral = scriptLiteral(hook);
+  const eventTypeLiteral = scriptLiteral(eventType);
+  const hookNodeLiteral = scriptLiteral(hookNode);
 
   return `import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 const traceFile = process.env.OMOH_TRACE_FILE;
 const project = ${compiledProject};
+const hook = ${hookLiteral};
+const eventType = ${eventTypeLiteral};
+const hookNodeId = ${hookNodeLiteral};
 
 async function emitEvents(events) {
   if (!traceFile || events.length === 0) return;
@@ -84,13 +95,13 @@ function baseMetadata(payload) {
 
 function buildTraceEvents(payload, parsedPayload) {
   const timestamp = new Date().toISOString();
-  const events = [{ timestamp, eventType: '${eventType}', hook: '${hook}', nodeId: '${hookNode}', status: 'ok', message: project.name + ':${hook}', metadata: baseMetadata(payload) }];
+  const events = [{ timestamp, eventType, hook, nodeId: hookNodeId, status: 'ok', message: project.name + ':' + hook, metadata: baseMetadata(payload) }];
   for (const node of project.nodes) {
-    if (node.kind === 'Skill' && '${hook}' === 'UserPromptSubmit') events.push({ timestamp, eventType: 'hook-activation', hook: '${hook}', nodeId: node.id, status: 'ok', message: 'Skill activated: ' + node.label, metadata: { ...baseMetadata(payload), nodeKind: node.kind } });
-    if (node.kind === 'Permission' && '${hook}' === 'UserPromptSubmit') events.push({ timestamp, eventType: 'branch-selection', hook: '${hook}', nodeId: node.id, status: 'ok', message: 'Permission gate requires approval before risky changes', metadata: { ...baseMetadata(payload), branch: 'approval_required', nodeKind: node.kind } });
-    if (node.kind === 'Loop' && '${hook}' === 'UserPromptSubmit') events.push({ timestamp, eventType: 'loop-iteration', hook: '${hook}', nodeId: node.id, status: 'ok', message: 'Loop entered for representative sandbox replay', metadata: { ...baseMetadata(payload), iteration: 1, nodeKind: node.kind } });
-    if (node.kind === 'StateWrite' && '${hook}' === 'Stop') events.push({ timestamp, eventType: 'state-transition', hook: '${hook}', nodeId: node.id, status: 'ok', message: 'State persisted for future GUI inspection', metadata: { ...baseMetadata(payload), stateKey: 'project.prompt', valuePreview: summarizePayload(String(parsedPayload?.prompt ?? parsedPayload?.reason ?? payload)), nodeKind: node.kind } });
-    if (node.kind === 'CustomBlock' && '${hook}' === 'UserPromptSubmit') events.push({ timestamp, eventType: 'custom-block', hook: '${hook}', nodeId: node.id, status: 'ok', message: 'Custom runtime block ready for downstream compilers', metadata: { ...baseMetadata(payload), nodeKind: node.kind } });
+    if (node.kind === 'Skill' && hook === 'UserPromptSubmit') events.push({ timestamp, eventType: 'hook-activation', hook, nodeId: node.id, status: 'ok', message: 'Skill activated: ' + node.label, metadata: { ...baseMetadata(payload), nodeKind: node.kind } });
+    if (node.kind === 'Permission' && hook === 'UserPromptSubmit') events.push({ timestamp, eventType: 'branch-selection', hook, nodeId: node.id, status: 'ok', message: 'Permission gate requires approval before risky changes', metadata: { ...baseMetadata(payload), branch: 'approval_required', nodeKind: node.kind } });
+    if (node.kind === 'Loop' && hook === 'UserPromptSubmit') events.push({ timestamp, eventType: 'loop-iteration', hook, nodeId: node.id, status: 'ok', message: 'Loop entered for representative sandbox replay', metadata: { ...baseMetadata(payload), iteration: 1, nodeKind: node.kind } });
+    if (node.kind === 'StateWrite' && hook === 'Stop') events.push({ timestamp, eventType: 'state-transition', hook, nodeId: node.id, status: 'ok', message: 'State persisted for future GUI inspection', metadata: { ...baseMetadata(payload), stateKey: 'project.prompt', valuePreview: summarizePayload(String(parsedPayload?.prompt ?? parsedPayload?.reason ?? payload)), nodeKind: node.kind } });
+    if (node.kind === 'CustomBlock' && hook === 'UserPromptSubmit') events.push({ timestamp, eventType: 'custom-block', hook, nodeId: node.id, status: 'ok', message: 'Custom runtime block ready for downstream compilers', metadata: { ...baseMetadata(payload), nodeKind: node.kind } });
   }
   return events;
 }
@@ -103,13 +114,13 @@ try { parsedPayload = payload ? JSON.parse(payload) : null; } catch { parsedPayl
 const events = buildTraceEvents(payload, parsedPayload);
 const shouldFail = Boolean(parsedPayload && typeof parsedPayload === 'object' && parsedPayload.forceFailure === true) || project.prompt.includes('__FORCE_SANDBOX_FAILURE__');
 if (shouldFail) {
-  events.push({ timestamp: new Date().toISOString(), eventType: 'failure', hook: '${hook}', nodeId: '${hookNode}', status: 'error', message: 'Forced sandbox failure for trace/error surfacing', metadata: baseMetadata(payload) });
+  events.push({ timestamp: new Date().toISOString(), eventType: 'failure', hook, nodeId: hookNodeId, status: 'error', message: 'Forced sandbox failure for trace/error surfacing', metadata: baseMetadata(payload) });
   await emitEvents(events);
   console.error('Forced sandbox failure for trace/error surfacing');
   process.exit(1);
 }
 await emitEvents(events);
-console.log(JSON.stringify({ continue: true, hook: '${hook}', traceCount: events.length, runtime: project.runtime }));
+console.log(JSON.stringify({ continue: true, hook, traceCount: events.length, runtime: project.runtime }));
 `;
 }
 
@@ -150,13 +161,24 @@ export function buildValidationManifest(
 }
 
 export function mcpServerScript(project: HarnessProject, targetRuntime: RuntimeTarget): string {
+  const serverNodeIdLiteral = scriptLiteral(mcpNodeId(project));
+  const traceMessageLiteral = scriptLiteral(`${project.manifest.name}:MCPServer`);
+  const graphHashLiteral = scriptLiteral(project.manifest.graphHash);
+  const runtimeLiteral = scriptLiteral(targetRuntime);
+  const serverNameLiteral = scriptLiteral(`${project.manifest.name}-generated`);
+
   return `import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 const traceFile = process.env.OMOH_TRACE_FILE;
+const serverNodeId = ${serverNodeIdLiteral};
+const traceMessage = ${traceMessageLiteral};
+const graphHash = ${graphHashLiteral};
+const runtime = ${runtimeLiteral};
+const serverName = ${serverNameLiteral};
 if (traceFile) {
   await mkdir(dirname(traceFile), { recursive: true });
-  await appendFile(traceFile, JSON.stringify({ timestamp: new Date().toISOString(), hook: 'MCPServer', nodeId: '${mcpNodeId(project)}', status: 'ok', eventType: 'mcp-server', message: '${project.manifest.name}:MCPServer', metadata: { graphHash: '${project.manifest.graphHash}', runtime: '${targetRuntime}' } }) + '\\n');
+  await appendFile(traceFile, JSON.stringify({ timestamp: new Date().toISOString(), hook: 'MCPServer', nodeId: serverNodeId, status: 'ok', eventType: 'mcp-server', message: traceMessage, metadata: { graphHash, runtime } }) + '\\n');
 }
-console.log(JSON.stringify({ name: '${project.manifest.name}-generated', status: 'ready', mode: 'stdio', runtime: '${targetRuntime}' }));
+console.log(JSON.stringify({ name: serverName, status: 'ready', mode: 'stdio', runtime }));
 `;
 }

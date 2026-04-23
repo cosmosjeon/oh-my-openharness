@@ -75,6 +75,8 @@ describe('GUI shell contract: loading canonical project data', () => {
       expect(html).toContain('Add node');
       expect(html).toContain('Delete node');
       expect(html).toContain('/api/project/mutate');
+      expect(html).toContain('Writes protected');
+      expect(html).toContain('x-omoh-api-token');
     } finally {
       await handle.close();
     }

@@ -6,7 +6,15 @@ const escapeHtml = (value: string): string =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
-export function renderViewerHtml(projectName: string): string {
+const escapeScriptJson = (value: unknown): string =>
+  JSON.stringify(value)
+    .replaceAll('<', '\\u003c')
+    .replaceAll('>', '\\u003e')
+    .replaceAll('&', '\\u0026')
+    .replaceAll('\u2028', '\\u2028')
+    .replaceAll('\u2029', '\\u2029');
+
+export function renderViewerHtml(projectName: string, apiToken: string): string {
   return `<!doctype html>
 <html>
   <head>
@@ -68,6 +76,7 @@ export function renderViewerHtml(projectName: string): string {
       <h1>oh-my-openharness</h1>
       <span class="muted" id="project-name">${escapeHtml(projectName)}</span>
       <span class="pill" id="runtime-pill">—</span>
+      <span class="pill" id="auth-pill">Writes protected</span>
       <div class="actions">
         <button id="refresh-btn" type="button">Refresh</button>
         <button id="save-btn" type="button" disabled>Save layout</button>
@@ -126,6 +135,7 @@ export function renderViewerHtml(projectName: string): string {
     </aside>
     <script>
       (function () {
+        const viewerAuth = ${escapeScriptJson({ apiToken })};
         const state = { project: null, trace: { events: [] }, dirty: false, dragNodeId: null, selectedNodeId: null, activeNodes: new Set(), errorNodes: new Set() };
         const canvas = document.getElementById('canvas');
         const nodesLayer = document.getElementById('nodes-layer');
@@ -352,17 +362,26 @@ export function renderViewerHtml(projectName: string): string {
           window.addEventListener('pointerup', onUp);
         }
 
+        async function readJson(res, fallbackMessage) {
+          const text = await res.text();
+          const payload = text ? JSON.parse(text) : null;
+          if (!res.ok) throw new Error(payload && payload.error ? payload.error : fallbackMessage + ': ' + res.status);
+          return payload;
+        }
+
+        function mutationHeaders(extraHeaders) {
+          return Object.assign({ 'x-omoh-api-token': viewerAuth.apiToken }, extraHeaders || {});
+        }
+
         async function loadProject() {
           const res = await fetch('/api/project');
-          if (!res.ok) throw new Error('Failed to load project: ' + res.status);
-          state.project = await res.json();
+          state.project = await readJson(res, 'Failed to load project');
           renderProject();
         }
 
         async function loadTrace() {
           const res = await fetch('/api/trace');
-          if (!res.ok) throw new Error('Failed to load trace: ' + res.status);
-          state.trace = await res.json();
+          state.trace = await readJson(res, 'Failed to load trace');
           renderTrace();
         }
 
@@ -372,10 +391,10 @@ export function renderViewerHtml(projectName: string): string {
           try {
             const res = await fetch('/api/layout', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: mutationHeaders({ 'Content-Type': 'application/json' }),
               body: JSON.stringify({ layout: state.project.layout })
             });
-            if (!res.ok) throw new Error('Failed to save layout: ' + res.status);
+            await readJson(res, 'Failed to save layout');
             state.dirty = false;
           } catch (err) {
             alert(err.message);
@@ -386,11 +405,10 @@ export function renderViewerHtml(projectName: string): string {
         async function mutateProject(body) {
           const res = await fetch('/api/project/mutate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: mutationHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(body)
           });
-          if (!res.ok) throw new Error('Failed to mutate project: ' + res.status);
-          state.project = await res.json();
+          state.project = await readJson(res, 'Failed to mutate project');
           renderProject();
           await loadTrace();
         }

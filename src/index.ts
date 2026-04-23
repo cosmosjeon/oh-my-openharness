@@ -150,7 +150,7 @@ async function createProject(name: string, prompt: string, dir: string, confirmR
 
 async function authorProject(name: string, prompt: string, dir: string, confirmRisk: boolean, targetRuntime: RuntimeTarget) {
   const target = resolve(dir, name);
-  const hostAuthoring = invokeHostAuthoring(targetRuntime, prompt);
+  const hostAuthoring = await invokeHostAuthoring(targetRuntime, prompt);
   let project = applyHostAuthoring(generateHarnessProject(name, prompt, targetRuntime), hostAuthoring);
   if (project.authoring.confirmationRequests.length > 0 && !confirmRisk) throw new Error(requiresConfirmationMessage(project.authoring.confirmationRequests));
   if (confirmRisk) project = applyRiskConfirmations(project, true);
@@ -172,6 +172,8 @@ async function compileProject(projectDir: string, outDir?: string) {
 
 async function exportProject(projectDir: string, outDir?: string) {
   const project = await loadHarnessProject(resolve(projectDir));
+  const unresolved = project.authoring.confirmationRequests.filter((request) => !request.confirmed);
+  if (unresolved.length > 0) throw new Error(requiresConfirmationMessage(unresolved));
   const runtimeDescriptor = describeRuntimeTarget(project.manifest.targetRuntime);
   const resolvedOut = resolve(outDir ?? join(projectDir, 'export', runtimeDescriptor.compileDirName));
   await mkdir(resolvedOut, { recursive: true });

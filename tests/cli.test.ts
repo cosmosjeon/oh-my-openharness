@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { chmod, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, isAbsolute, join } from 'node:path';
 
 function runCli(args: string[], env: NodeJS.ProcessEnv = {}) {
   return spawnSync('bun', ['run', 'src/index.ts', ...args], {
@@ -15,6 +15,23 @@ function runCli(args: string[], env: NodeJS.ProcessEnv = {}) {
 async function createFakeBinary(dir: string, name: string) {
   const path = join(dir, name);
   await writeFile(path, '#!/usr/bin/env sh\nexit 0\n');
+  await chmod(path, 0o755);
+  return path;
+}
+
+async function createHostAuthoringBinary(dir: string, name: string, runtimeEnvVar: string, payload: unknown) {
+  const path = join(dir, name);
+  await writeFile(
+    path,
+    `#!/usr/bin/env sh
+if [ -n "$OMOH_CAPTURE_FILE" ]; then
+  printf '%s' "$${runtimeEnvVar}" > "$OMOH_CAPTURE_FILE"
+fi
+cat <<'JSON'
+${JSON.stringify(payload, null, 2)}
+JSON
+`
+  );
   await chmod(path, 0o755);
   return path;
 }
@@ -53,6 +70,60 @@ describe('CLI entrypoint', () => {
     expect(payload.runtime).toBe('opencode');
     const exportManifest = JSON.parse(await readFile(payload.exportManifestPath, 'utf8')) as { runtime: string };
     expect(exportManifest.runtime).toBe('opencode');
+  });
+
+  test('export rejects unresolved confirmations the same way compile does', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omoh-cli-export-risk-'));
+    const createResult = runCli(['new', '--name', 'risk-target', '--prompt', 'Create a harness with full access and MCP server', '--runtime', 'codex', '--dir', root, '--confirm-risk']);
+    expect(createResult.status).toBe(0);
+    const projectDir = join(root, 'risk-target');
+    const authoringPath = join(projectDir, 'authoring', 'decision.json');
+    const authoring = JSON.parse(await readFile(authoringPath, 'utf8')) as { confirmationRequests: Array<{ confirmed: boolean }> };
+    authoring.confirmationRequests[0]!.confirmed = false;
+    await writeFile(authoringPath, JSON.stringify(authoring, null, 2));
+
+    const compileResult = runCli(['compile', '--project', projectDir]);
+    const exportResult = runCli(['export', '--project', projectDir]);
+
+    expect(compileResult.status).toBe(1);
+    expect(exportResult.status).toBe(1);
+    expect(compileResult.stderr).toContain('Generation requires confirmation before proceeding');
+    expect(exportResult.stderr).toContain('Generation requires confirmation before proceeding');
+  });
+
+  test('export manifests stay relative and relocated bundles still import successfully', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omoh-cli-export-relocate-'));
+    const createResult = runCli(['new', '--name', 'relocate-source', '--prompt', 'Create a harness with MCP server and state memory', '--runtime', 'codex', '--dir', root, '--confirm-risk']);
+    expect(createResult.status).toBe(0);
+    const projectDir = join(root, 'relocate-source');
+    const exportResult = runCli(['export', '--project', projectDir]);
+    expect(exportResult.status).toBe(0);
+
+    const exportPayload = JSON.parse(exportResult.stdout) as { outDir: string; exportManifestPath: string; runtimeBundleManifestPath: string };
+    const exportManifest = JSON.parse(await readFile(exportPayload.exportManifestPath, 'utf8')) as {
+      exportRoot: string;
+      canonicalRoot: string;
+      runtimeRoot: string;
+      runtimeBundleManifestPath: string;
+      validationManifestPath: string;
+    };
+    expect(isAbsolute(exportManifest.exportRoot)).toBe(false);
+    expect(isAbsolute(exportManifest.canonicalRoot)).toBe(false);
+    expect(isAbsolute(exportManifest.runtimeRoot)).toBe(false);
+    expect(isAbsolute(exportManifest.runtimeBundleManifestPath)).toBe(false);
+    expect(isAbsolute(exportManifest.validationManifestPath)).toBe(false);
+
+    const runtimeManifest = JSON.parse(await readFile(exportPayload.runtimeBundleManifestPath, 'utf8')) as { runtimeRoot: string };
+    expect(isAbsolute(runtimeManifest.runtimeRoot)).toBe(false);
+
+    const relocatedRoot = join(root, 'relocated-bundle');
+    await cp(exportPayload.outDir, relocatedRoot, { recursive: true });
+    const importDir = join(root, 'relocated-imports');
+    const importResult = runCli(['import', '--from', relocatedRoot, '--name', 'relocated-project', '--dir', importDir]);
+    expect(importResult.status).toBe(0);
+    const importedManifest = JSON.parse(await readFile(join(importDir, 'relocated-project', 'harness.json'), 'utf8')) as { targetRuntime: string; description: string };
+    expect(importedManifest.targetRuntime).toBe('codex');
+    expect(importedManifest.description).toContain('Imported seed harness');
   });
 
   test('import seeds a canonical project from a runtime bundle', async () => {
@@ -229,5 +300,60 @@ describe('CLI entrypoint', () => {
     expect(doctorPayload.runtimes[0]?.installShape.status).toBe('ok');
     expect(doctorPayload.runtimes[0]?.hostReadiness.status).toBe('warning');
     expect(doctorPayload.runtimes[0]?.hostReadiness.details[0]).toContain('Verify host readiness separately');
+  });
+
+  test('author applies host-authored graph deltas and preserves configured runtime roots across setup for each runtime', async () => {
+    const cases = [
+      { runtime: 'claude', targetRuntime: 'claude-code', binary: 'claude', envVar: 'CLAUDE_CONFIG_DIR', rootDirName: 'claude-root' },
+      { runtime: 'opencode', targetRuntime: 'opencode', binary: 'opencode', envVar: 'OPENCODE_CONFIG_DIR', rootDirName: 'opencode-root' },
+      { runtime: 'codex', targetRuntime: 'codex', binary: 'codex', envVar: 'CODEX_HOME', rootDirName: 'codex-root' }
+    ] as const;
+
+    for (const testCase of cases) {
+      const root = await mkdtemp(join(tmpdir(), `omoh-cli-author-${testCase.runtime}-`));
+      const binDir = join(root, 'bin');
+      const configRoot = join(root, testCase.rootDirName);
+      const captureFile = join(root, 'captured-root.txt');
+      await mkdir(binDir, { recursive: true });
+      await createHostAuthoringBinary(binDir, testCase.binary, testCase.envVar, {
+        summary: `${testCase.runtime} host-authored summary`,
+        emphasis: ['graph'],
+        warnings: [`${testCase.runtime} host warning`],
+        graphDelta: {
+          nodes: {
+            add: [{ id: `${testCase.runtime}-guard`, kind: 'Condition', label: `${testCase.runtime} guard` }]
+          },
+          edges: {
+            add: [{ id: `${testCase.runtime}-guard-edge`, from: 'main-skill', to: `${testCase.runtime}-guard`, label: 'host-link' }]
+          }
+        }
+      });
+
+      const env = {
+        PATH: `${binDir}${delimiter}${process.env.PATH ?? ''}`,
+        [testCase.envVar]: configRoot,
+        OMOH_CAPTURE_FILE: captureFile
+      };
+
+      const setupResult = runCli(['setup', '--runtimes', testCase.runtime, '--yes', '--json'], env);
+      expect(setupResult.status).toBe(0);
+
+      const authorResult = runCli(
+        ['author', '--name', `${testCase.runtime}-author-target`, '--prompt', 'Create a harness with review loop', '--runtime', testCase.targetRuntime, '--dir', root, '--confirm-risk'],
+        env
+      );
+      expect(authorResult.status).toBe(0);
+
+      expect(await readFile(captureFile, 'utf8')).toBe(configRoot);
+      const projectDir = join(root, `${testCase.runtime}-author-target`);
+      const nodes = JSON.parse(await readFile(join(projectDir, 'graph', 'nodes.json'), 'utf8')) as Array<{ id: string }>;
+      const edges = JSON.parse(await readFile(join(projectDir, 'graph', 'edges.json'), 'utf8')) as Array<{ id: string }>;
+      const authoring = JSON.parse(await readFile(join(projectDir, 'authoring', 'decision.json'), 'utf8')) as { summary: string; warnings: string[] };
+
+      expect(nodes.some((node) => node.id === `${testCase.runtime}-guard`)).toBe(true);
+      expect(edges.some((edge) => edge.id === `${testCase.runtime}-guard-edge`)).toBe(true);
+      expect(authoring.summary).toBe(`${testCase.runtime} host-authored summary`);
+      expect(authoring.warnings).toContain(`${testCase.runtime} host warning`);
+    }
   });
 });

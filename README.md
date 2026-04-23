@@ -2,6 +2,46 @@
 
 `oh-my-openharness` (OMOH) is a Bun-first CLI for AI coding-agent workflows. It sets up Claude Code / OpenCode / Codex integrations, writes a canonical harness project to disk, serves a local browser editor over that project, exports runtime-specific bundles, validates generated output, and supports a bounded import-seed path back into the canonical project.
 
+## 한국어 사용 가이드
+
+영문 설명보다 **한국어로 빠르게 이해하고 바로 써보고 싶으면** 아래 문서를 먼저 보는 걸 추천합니다.
+
+- [`docs/usage-ko.md`](docs/usage-ko.md) — 설치부터 `new`, `author`, `serve`, `sandbox`, `export`, `import`까지 한 번에 설명한 한국어 가이드
+
+아주 짧게 요약하면:
+
+1. **프로젝트 만들기**
+   ```bash
+   bunx oh-my-openharness new \
+     --name demo-harness \
+     --runtime claude-code \
+     --prompt "Create a harness with approvals, MCP server support, and state memory" \
+     --dir . \
+     --confirm-risk
+   ```
+2. **브라우저 노드 뷰 열기**
+   ```bash
+   bunx oh-my-openharness serve --project ./demo-harness
+   ```
+   - 출력되는 `url`을 브라우저에서 엽니다.
+   - 출력되는 `apiToken`은 브라우저 화면의 **Mutation token** 칸에 넣어야 편집이 가능합니다.
+3. **검증하기**
+   ```bash
+   bunx oh-my-openharness sandbox --project ./demo-harness
+   ```
+4. **번들 내보내기**
+   ```bash
+   bunx oh-my-openharness export --project ./demo-harness
+   ```
+
+특히 **Claude만 쓸 사람**은 아래 순서만 기억하면 됩니다:
+
+1. `bunx oh-my-openharness setup --runtimes claude --yes`
+2. `bunx oh-my-openharness doctor --runtimes claude`
+3. `new` 또는 `author`로 프로젝트 생성
+4. `serve`로 브라우저 에디터 열기
+5. `sandbox`로 trace/validation 확인
+
 ## Current supported contract
 
 OMOH currently supports:

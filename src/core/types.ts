@@ -136,6 +136,71 @@ export interface RuntimeIntent {
   safety: SafetyLevel;
 }
 
+export interface HostAuthoringNodeUpdate {
+  id: string;
+  kind?: NodeKind;
+  label?: string;
+  config?: Record<string, unknown>;
+}
+
+export interface HostAuthoringEdgeUpdate {
+  id: string;
+  from?: string;
+  to?: string;
+  label?: string;
+}
+
+export interface HostAuthoringRuntimeIntentUpdate {
+  id: string;
+  kind?: RuntimeIntentKind;
+  label?: string;
+  targetRuntime?: RuntimeTarget;
+  sourceNodeIds?: string[];
+  transport?: 'stdio' | 'in-memory';
+  safety?: SafetyLevel;
+}
+
+export interface HostAuthoringSkillUpdate {
+  id?: string;
+  name?: string;
+  description?: string;
+  content?: string;
+  appendContent?: string;
+}
+
+export interface HostAuthoringGraphDelta {
+  manifest?: {
+    description?: string;
+  };
+  nodes?: {
+    add?: GraphNode[];
+    update?: HostAuthoringNodeUpdate[];
+    remove?: string[];
+  };
+  edges?: {
+    add?: GraphEdge[];
+    update?: HostAuthoringEdgeUpdate[];
+    remove?: string[];
+  };
+  runtimeIntents?: {
+    add?: RuntimeIntent[];
+    update?: HostAuthoringRuntimeIntentUpdate[];
+    remove?: string[];
+  };
+  skills?: {
+    add?: SkillFile[];
+    update?: HostAuthoringSkillUpdate[];
+    remove?: string[];
+  };
+}
+
+export interface HostAuthoringPayload {
+  summary: string;
+  emphasis: string[];
+  warnings: string[];
+  graphDelta?: HostAuthoringGraphDelta;
+}
+
 export type SetupRuntime = 'claude' | 'opencode' | 'codex';
 export type SetupProvenanceType = 'extracted' | 'adapted' | 'novel';
 export type SetupSupportLevel = 'supported' | 'scaffold';
@@ -234,6 +299,7 @@ export interface CompileResult {
   outDir: string;
   pluginRoot: string;
   runtime: RuntimeTarget;
+  traceSchemaPath: string;
   validationManifestPath: string;
   exportManifestPath: string;
   generatedFiles: string[];
@@ -279,4 +345,17 @@ export interface SandboxRunResult {
   events: TraceEvent[];
   success: boolean;
   failure?: TraceEvent;
+  validation?: {
+    manifest: RuntimeValidationManifest;
+    traceSchema: {
+      version: number;
+      eventTypes: ReadonlyArray<TraceEvent['eventType']>;
+      requiredFields: ReadonlyArray<keyof TraceEvent>;
+      requiredMetadata: ReadonlyArray<string>;
+      expectedEventTypes?: ReadonlyArray<TraceEvent['eventType']>;
+    };
+    eventTypeCounts: Partial<Record<TraceEvent['eventType'], number>>;
+    missingEventTypes: TraceEvent['eventType'][];
+    violations: string[];
+  };
 }

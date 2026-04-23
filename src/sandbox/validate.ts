@@ -20,6 +20,20 @@ interface ValidateOptions {
   failHook?: string;
 }
 
+interface TraceSchemaDocument {
+  version: number;
+  eventTypes: ReadonlyArray<TraceEvent['eventType']>;
+  requiredFields: ReadonlyArray<keyof TraceEvent>;
+  requiredMetadata: ReadonlyArray<string>;
+  expectedEventTypes?: ReadonlyArray<TraceEvent['eventType']>;
+}
+
+interface TraceValidationAudit {
+  eventTypeCounts: Partial<Record<TraceEvent['eventType'], number>>;
+  missingEventTypes: TraceEvent['eventType'][];
+  violations: string[];
+}
+
 async function appendTraceEvent(traceFile: string, event: Record<string, unknown> | TraceEvent) {
   await mkdir(dirname(traceFile), { recursive: true });
   await appendFile(traceFile, JSON.stringify(event) + '\n');
@@ -70,6 +84,35 @@ function formatFailureOutput(stdout: string, stderr: string): string {
   return [stderr.trim(), stdout.trim()].filter(Boolean).join(' | ');
 }
 
+function hasValue(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== '';
+}
+
+export function auditTraceEvents(events: TraceEvent[], traceSchema: TraceSchemaDocument): TraceValidationAudit {
+  const eventTypeCounts: Partial<Record<TraceEvent['eventType'], number>> = {};
+  const allowedEventTypes = new Set(traceSchema.eventTypes);
+  const violations: string[] = [];
+
+  for (const [index, event] of events.entries()) {
+    if (!allowedEventTypes.has(event.eventType)) {
+      violations.push(`events[${index}].eventType is not allowed by trace schema: ${String(event.eventType)}`);
+    }
+
+    for (const field of traceSchema.requiredFields) {
+      if (!hasValue(event[field])) violations.push(`events[${index}].${String(field)} is required by trace schema`);
+    }
+
+    for (const key of traceSchema.requiredMetadata) {
+      if (!hasValue(event.metadata?.[key])) violations.push(`events[${index}].metadata.${key} is required by trace schema`);
+    }
+
+    eventTypeCounts[event.eventType] = (eventTypeCounts[event.eventType] ?? 0) + 1;
+  }
+
+  const missingEventTypes = (traceSchema.expectedEventTypes ?? []).filter((eventType) => !eventTypeCounts[eventType]);
+  return { eventTypeCounts, missingEventTypes, violations };
+}
+
 export async function validateProject(projectDir: string, options: ValidateOptions | string = {}): Promise<SandboxRunResult> {
   const resolvedOptions = typeof options === 'string' ? { outDir: options } : options;
   const resolvedProjectDir = resolve(projectDir);
@@ -84,11 +127,12 @@ export async function validateProject(projectDir: string, options: ValidateOptio
   const project = await loadHarnessProject(resolvedProjectDir);
   const compileResult = await compileProjectForRuntime(project, compileDir);
   const sandboxEnv = await buildSandboxEnv(sandboxDir, compileResult.pluginRoot, traceFile);
+  const validationManifest = JSON.parse(await readFile(compileResult.validationManifestPath, 'utf8')) as RuntimeValidationManifest;
+  const traceSchema = JSON.parse(await readFile(compileResult.traceSchemaPath, 'utf8')) as TraceSchemaDocument;
 
   let failure: TraceEvent | undefined;
 
   try {
-    const validationManifest = JSON.parse(await readFile(compileResult.validationManifestPath, 'utf8')) as RuntimeValidationManifest;
     for (const [hook, payload] of Object.entries(SAMPLE_PAYLOADS)) {
       const commands = validationManifest.steps.filter((step) => step.hook === hook);
       for (const commandEntry of commands) {
@@ -134,10 +178,38 @@ export async function validateProject(projectDir: string, options: ValidateOptio
 
   let events = await readTraceEvents(traceFile);
   if (events.length === 0) {
-    const emptyTraceFailure: TraceEvent = { timestamp: new Date().toISOString(), eventType: 'failure', hook: 'Sandbox', nodeId: 'sandbox', status: 'error', message: 'Sandbox validation produced no trace events' };
+    const emptyTraceFailure: TraceEvent = {
+      timestamp: new Date().toISOString(),
+      eventType: 'failure',
+      hook: 'Sandbox',
+      nodeId: 'sandbox',
+      status: 'error',
+      message: 'Sandbox validation produced no trace events',
+      metadata: { runtime: validationManifest.runtime, graphHash: project.manifest.graphHash }
+    };
     await appendTraceEvent(traceFile, emptyTraceFailure);
     events = await readTraceEvents(traceFile);
     failure ??= emptyTraceFailure;
+  }
+
+  const validation = auditTraceEvents(events, traceSchema);
+  if (validation.missingEventTypes.length > 0 || validation.violations.length > 0) {
+    const details = [
+      validation.missingEventTypes.length > 0 ? `missing event types: ${validation.missingEventTypes.join(', ')}` : null,
+      validation.violations.length > 0 ? validation.violations.slice(0, 3).join(' | ') : null
+    ].filter(Boolean).join(' | ');
+    const validationFailure: TraceEvent = {
+      timestamp: new Date().toISOString(),
+      eventType: 'failure',
+      hook: 'Sandbox',
+      nodeId: 'trace-validation',
+      status: 'error',
+      message: 'Sandbox trace validation failed',
+      metadata: { runtime: validationManifest.runtime, graphHash: project.manifest.graphHash, details }
+    };
+    await appendTraceEvent(traceFile, validationFailure);
+    events = await readTraceEvents(traceFile);
+    failure ??= validationFailure;
   }
 
   await writeFile(htmlReport, renderTraceHtml(project.manifest.name, events));
@@ -149,6 +221,13 @@ export async function validateProject(projectDir: string, options: ValidateOptio
     htmlReport,
     events,
     success: !events.some((event) => event.status === 'error'),
-    failure
+    failure,
+    validation: {
+      manifest: validationManifest,
+      traceSchema,
+      eventTypeCounts: validation.eventTypeCounts,
+      missingEventTypes: validation.missingEventTypes,
+      violations: validation.violations
+    }
   };
 }

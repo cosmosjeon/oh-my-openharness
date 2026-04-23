@@ -1,11 +1,12 @@
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
   RuntimeCapabilityMatrixEntry,
   RuntimeDoctorEntry,
   RuntimeDoctorReport,
+  RuntimeTarget,
   RuntimeSetupPlan,
   SetupApplyResult,
   SetupChange,
@@ -45,6 +46,25 @@ function defaultConfigRoot(runtime: SetupRuntime): string {
     case 'codex':
       return process.env.CODEX_HOME ?? join(homedir(), '.codex');
   }
+}
+
+async function readConfiguredRoot(configPath: string): Promise<string | undefined> {
+  try {
+    const payload = JSON.parse(await readFile(configPath, 'utf8')) as { configRoot?: string };
+    return typeof payload.configRoot === 'string' && payload.configRoot.length > 0 ? payload.configRoot : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function resolveRuntimeAuthoringConfigRoot(runtime: RuntimeTarget): Promise<string | undefined> {
+  if (runtime === 'claude-code') {
+    return process.env.CLAUDE_CONFIG_DIR ?? readConfiguredRoot(join(defaultConfigRoot('claude'), 'plugins', PRODUCT_NAME, 'install.json'));
+  }
+  if (runtime === 'opencode') {
+    return process.env.OPENCODE_CONFIG_DIR ?? readConfiguredRoot(join(defaultConfigRoot('opencode'), `${PRODUCT_NAME}.jsonc`));
+  }
+  return process.env.CODEX_HOME ?? readConfiguredRoot(join(defaultConfigRoot('codex'), `${PRODUCT_NAME}.json`));
 }
 
 function runtimeDescriptor(runtime: SetupRuntime): RuntimeDescriptor {
@@ -349,6 +369,8 @@ async function writeOpenCodeBundle(entry: RuntimeCapabilityMatrixEntry, selected
         supportLevel: entry.supportLevel,
         selectedRuntimes,
         installedAt: new Date().toISOString(),
+        configRoot: entry.configRoot,
+        installRoot: entry.installRoot,
         skills: [`skills/${RUNTIME_SKILL_NAME}/SKILL.md`],
         hostCommand: 'opencode',
         contract: 'host-native-authoring'
@@ -377,6 +399,8 @@ async function writeCodexBundle(entry: RuntimeCapabilityMatrixEntry, selectedRun
         supportLevel: entry.supportLevel,
         selectedRuntimes,
         installedAt: new Date().toISOString(),
+        configRoot: entry.configRoot,
+        installRoot: entry.installRoot,
         skills: [`skills/${RUNTIME_SKILL_NAME}/SKILL.md`],
         prompt: `prompts/${PRODUCT_NAME}.md`,
         hostCommand: 'codex',

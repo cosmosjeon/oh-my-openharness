@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { HOOK_BLOCK_KINDS, createRegistrySnapshot } from './registry';
-import type { HarnessManifest, HarnessProject, RuntimeIntent, SkillFile } from './types';
+import type { HarnessManifest, HarnessProject, LayoutNode, RuntimeIntent, SkillFile } from './types';
 
 const CURRENT_SCHEMA_VERSION = '0.1.0';
 
@@ -15,6 +15,24 @@ export function computeGraphHash(manifest: Pick<HarnessManifest, 'name' | 'targe
       edges: edges.map(({ id, from, to, label }) => ({ id, from, to, label }))
     })
   ).toString(16);
+}
+
+function defaultLayoutForIndex(index: number): LayoutNode {
+  return {
+    id: '',
+    x: 80 + (index % 4) * 220,
+    y: 120 + Math.floor(index / 4) * 160
+  };
+}
+
+function normalizeLayout(layout: HarnessProject['layout'], nodes: HarnessProject['nodes']): HarnessProject['layout'] {
+  const byId = new Map(layout.map((item) => [item.id, item]));
+  return nodes.map((node, index) => {
+    const existing = byId.get(node.id);
+    if (existing) return { id: node.id, x: existing.x, y: existing.y };
+    const fallback = defaultLayoutForIndex(index);
+    return { id: node.id, x: fallback.x, y: fallback.y };
+  });
 }
 
 function normalizeManifest(manifest: HarnessManifest): HarnessManifest {
@@ -46,9 +64,11 @@ function normalizeProject(project: HarnessProject): HarnessProject {
     ...normalizeManifest(project.manifest),
     graphHash: computeGraphHash(project.manifest, project.nodes, project.edges)
   };
+  const layout = normalizeLayout(project.layout, project.nodes);
   return {
     ...project,
     manifest,
+    layout,
     composites: project.composites ?? [],
     customBlocks: project.customBlocks ?? [],
     registry: project.registry ?? createRegistrySnapshot(),

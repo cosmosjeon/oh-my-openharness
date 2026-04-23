@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import { generateHarnessProject } from './generator';
 import { parseRuntimeTarget } from './runtime-targets';
 import type { HarnessProject, RuntimeTarget } from './types';
@@ -15,6 +15,10 @@ interface ExportManifest {
   runtime: RuntimeTarget;
   runtimeRoot: string;
   runtimeBundleManifestPath: string;
+}
+
+function resolveManifestPath(baseDir: string, manifestPath: string): string {
+  return isAbsolute(manifestPath) ? manifestPath : resolve(baseDir, manifestPath);
 }
 
 async function loadExportManifest(sourceDir: string): Promise<ExportManifest | null> {
@@ -55,8 +59,8 @@ export async function importSeedProject(options: ImportSeedOptions): Promise<Har
   const exportManifest = await loadExportManifest(sourceDir);
   const runtime = options.runtime ? parseRuntimeTarget(options.runtime) : exportManifest?.runtime ?? detectRuntimeTarget(sourceDir);
   if (exportManifest) {
-    const runtimeRoot = resolve(sourceDir, exportManifest.runtimeRoot);
-    const runtimeBundleManifestPath = resolve(sourceDir, exportManifest.runtimeBundleManifestPath);
+    const runtimeRoot = resolveManifestPath(sourceDir, exportManifest.runtimeRoot);
+    const runtimeBundleManifestPath = resolveManifestPath(sourceDir, exportManifest.runtimeBundleManifestPath);
     if (!existsSync(runtimeRoot) || !existsSync(runtimeBundleManifestPath)) throw new Error('Import seed manifest references missing runtime export artifacts.');
   }
   const name = options.name ?? basename(sourceDir);

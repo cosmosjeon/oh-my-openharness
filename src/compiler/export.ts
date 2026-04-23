@@ -1,5 +1,5 @@
 import { cp, mkdir, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import type { HarnessProject, RuntimeTarget } from '../core/types';
 import { compileProjectForRuntime } from './index';
 
@@ -31,12 +31,12 @@ export async function exportProjectBundle(projectDir: string, project: HarnessPr
     JSON.stringify(
       {
         runtime: project.manifest.targetRuntime,
-        exportRoot,
-        canonicalRoot: canonicalDir,
-        runtimeRoot: compileResult.pluginRoot,
+        exportRoot: '.',
+        canonicalRoot: relative(exportRoot, canonicalDir),
+        runtimeRoot: relative(exportRoot, compileResult.pluginRoot),
         canonicalSource: canonicalEntries,
-        runtimeBundleManifestPath: compileResult.exportManifestPath,
-        validationManifestPath: compileResult.validationManifestPath
+        runtimeBundleManifestPath: relative(exportRoot, compileResult.exportManifestPath),
+        validationManifestPath: relative(exportRoot, compileResult.validationManifestPath)
       },
       null,
       2

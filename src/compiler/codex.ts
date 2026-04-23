@@ -89,7 +89,7 @@ export async function compileCodex(project: HarnessProject, outDir: string): Pro
     JSON.stringify(
       {
         runtime: 'codex',
-        runtimeRoot: pluginRoot,
+        runtimeRoot: '.',
         canonicalSource: ['harness.json', 'graph/nodes.json', 'graph/edges.json', 'layout.json', 'runtime.json'],
         runtimeAdapter: ['catalog-manifest.json', 'oh-my-openharness.json', 'prompts/', 'skills/', 'scripts/'],
         validationArtifacts: ['trace-schema.json', 'validation.json', ...(hasMcpServer ? ['mcp-bridge.json'] : [])]
@@ -99,5 +99,5 @@ export async function compileCodex(project: HarnessProject, outDir: string): Pro
     )
   );
 
-  return { outDir, pluginRoot, runtime: 'codex', validationManifestPath, exportManifestPath, generatedFiles };
+  return { outDir, pluginRoot, runtime: 'codex', traceSchemaPath, validationManifestPath, exportManifestPath, generatedFiles };
 }

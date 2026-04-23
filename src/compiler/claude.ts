@@ -76,7 +76,7 @@ export async function compileClaude(project: HarnessProject, outDir: string): Pr
     JSON.stringify(
       {
         runtime: 'claude-code',
-        runtimeRoot: pluginRoot,
+        runtimeRoot: '.',
         canonicalSource: ['harness.json', 'graph/nodes.json', 'graph/edges.json', 'layout.json', 'runtime.json'],
         runtimeAdapter: ['plugin.json', 'hooks/hooks.json', 'skills/', 'scripts/'],
         validationArtifacts: ['trace-schema.json', 'validation.json', ...(hasMcpServer ? ['.mcp.json'] : [])]
@@ -86,5 +86,5 @@ export async function compileClaude(project: HarnessProject, outDir: string): Pr
     )
   );
 
-  return { outDir, pluginRoot, runtime: 'claude-code', validationManifestPath, exportManifestPath, generatedFiles };
+  return { outDir, pluginRoot, runtime: 'claude-code', traceSchemaPath, validationManifestPath, exportManifestPath, generatedFiles };
 }

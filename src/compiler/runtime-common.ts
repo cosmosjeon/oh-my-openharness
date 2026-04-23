@@ -2,6 +2,17 @@ import { join } from 'node:path';
 import type { GraphNode, HarnessProject, HookEvent, RuntimeTarget, RuntimeValidationManifest, RuntimeValidationStep, TraceEvent } from '../core/types';
 
 export const DEFAULT_HOOK_EVENTS: HookEvent[] = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop'];
+export const TRACE_EVENT_TYPES: TraceEvent['eventType'][] = [
+  'hook-activation',
+  'branch-selection',
+  'state-transition',
+  'loop-iteration',
+  'custom-block',
+  'failure',
+  'mcp-server'
+];
+export const TRACE_REQUIRED_FIELDS = ['timestamp', 'eventType', 'hook', 'nodeId', 'status', 'message'] as const;
+export const TRACE_REQUIRED_METADATA = ['graphHash', 'runtime'] as const;
 
 function inferHookEventType(hook: HookEvent): TraceEvent['eventType'] {
   if (hook === 'PreToolUse' || hook === 'PostToolUse') return 'state-transition';
@@ -20,12 +31,23 @@ function mcpNodeId(project: HarnessProject): string {
   return project.nodes.find((node) => node.kind === 'MCPServer')?.id ?? 'mcp-server';
 }
 
+export function expectedTraceEventTypes(project: HarnessProject): TraceEvent['eventType'][] {
+  const expected = new Set<TraceEvent['eventType']>(['hook-activation']);
+  if (project.nodes.some((node) => node.kind === 'Permission')) expected.add('branch-selection');
+  if (project.nodes.some((node) => node.kind === 'Loop')) expected.add('loop-iteration');
+  if (project.nodes.some((node) => node.kind === 'StateWrite')) expected.add('state-transition');
+  if (project.nodes.some((node) => node.kind === 'CustomBlock')) expected.add('custom-block');
+  if (project.nodes.some((node) => node.kind === 'MCPServer')) expected.add('mcp-server');
+  return TRACE_EVENT_TYPES.filter((eventType) => expected.has(eventType));
+}
+
 export function traceSchema(_project: HarnessProject) {
   return {
     version: 1,
-    eventTypes: ['hook-activation', 'branch-selection', 'state-transition', 'loop-iteration', 'custom-block', 'failure', 'mcp-server'],
-    requiredFields: ['timestamp', 'eventType', 'hook', 'nodeId', 'status', 'message'],
-    requiredMetadata: ['graphHash', 'runtime']
+    eventTypes: TRACE_EVENT_TYPES,
+    requiredFields: TRACE_REQUIRED_FIELDS,
+    requiredMetadata: TRACE_REQUIRED_METADATA,
+    expectedEventTypes: expectedTraceEventTypes(_project)
   };
 }
 

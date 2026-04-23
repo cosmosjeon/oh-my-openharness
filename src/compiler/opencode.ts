@@ -70,7 +70,7 @@ export async function compileOpenCode(project: HarnessProject, outDir: string): 
     JSON.stringify(
       {
         runtime: 'opencode',
-        runtimeRoot: pluginRoot,
+        runtimeRoot: '.',
         canonicalSource: ['harness.json', 'graph/nodes.json', 'graph/edges.json', 'layout.json', 'runtime.json'],
         runtimeAdapter: ['oh-my-openharness.jsonc', 'skills/', 'scripts/'],
         validationArtifacts: ['trace-schema.json', 'validation.json', ...(hasMcpServer ? ['mcp-bridge.json'] : [])]
@@ -80,5 +80,5 @@ export async function compileOpenCode(project: HarnessProject, outDir: string): 
     )
   );
 
-  return { outDir, pluginRoot, runtime: 'opencode', validationManifestPath, exportManifestPath, generatedFiles };
+  return { outDir, pluginRoot, runtime: 'opencode', traceSchemaPath, validationManifestPath, exportManifestPath, generatedFiles };
 }

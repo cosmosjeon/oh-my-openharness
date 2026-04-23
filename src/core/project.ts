@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { HOOK_BLOCK_KINDS, createRegistrySnapshot } from './registry';
 import type { HarnessManifest, HarnessProject, LayoutNode, RuntimeIntent, SkillFile } from './types';
@@ -26,6 +26,26 @@ function validateContainedRelativePath(rootDir: string, candidate: string, label
 
 function resolveSkillFilePath(skillsDir: string, skill: Pick<SkillFile, 'name' | 'path'>): string {
   return validateContainedRelativePath(skillsDir, skill.path ?? `${skill.name}.md`, `Skill ${skill.name} path`);
+}
+
+async function assertNoSymlinkSegments(rootDir: string, relativePath: string, label: string): Promise<void> {
+  const rootStat = await lstat(rootDir).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  assert(rootStat && !rootStat.isSymbolicLink(), `${label} must not use a symlinked root directory.`);
+
+  let cursor = rootDir;
+  for (const segment of relativePath.split('/').filter(Boolean)) {
+    cursor = join(cursor, segment);
+    const stat = await lstat(cursor).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (stat && stat.isSymbolicLink()) {
+      throw new Error(`${label} must not traverse symlinked path segments.`);
+    }
+  }
 }
 
 function assertValidProjectGraph(project: HarnessProject): void {
@@ -196,6 +216,7 @@ export async function writeHarnessProject(baseDir: string, project: HarnessProje
     const relativeSkillPath = resolveSkillFilePath(skillsDir, skill);
     const absoluteSkillPath = join(skillsDir, relativeSkillPath);
     await mkdir(dirname(absoluteSkillPath), { recursive: true });
+    await assertNoSymlinkSegments(skillsDir, relativeSkillPath, `Skill ${skill.name} path`);
     await writeFile(absoluteSkillPath, skill.content);
   }
   return baseDir;
@@ -221,6 +242,7 @@ export async function loadHarnessProject(baseDir: string): Promise<HarnessProjec
       ? await Promise.all(
           skillIndex.map(async (entry) => {
             const relativeSkillPath = resolveSkillFilePath(skillsDir, entry);
+            await assertNoSymlinkSegments(skillsDir, relativeSkillPath, `Skill ${entry.name} path`);
             return {
               id: entry.id,
               name: entry.name,

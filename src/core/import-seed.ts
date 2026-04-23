@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { lstat, readFile } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { generateHarnessProject } from './generator';
 import { parseRuntimeTarget } from './runtime-targets';
@@ -29,6 +29,29 @@ function resolveBundleScopedManifestPath(bundleRoot: string, manifestPath: strin
   return resolvedPath;
 }
 
+async function assertBundlePathHasNoSymlinks(bundleRoot: string, resolvedPath: string, fieldName: keyof Pick<ExportManifest, 'runtimeRoot' | 'runtimeBundleManifestPath'>): Promise<void> {
+  const rootStat = await lstat(bundleRoot).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (rootStat && rootStat.isSymbolicLink()) {
+    throw new Error(`Import seed manifest has unsafe ${fieldName}; bundle root must not be a symlink.`);
+  }
+
+  const relativePath = relative(bundleRoot, resolvedPath).replaceAll('\\', '/');
+  let cursor = bundleRoot;
+  for (const segment of relativePath.split('/').filter(Boolean)) {
+    cursor = join(cursor, segment);
+    const stat = await lstat(cursor).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (stat && stat.isSymbolicLink()) {
+      throw new Error(`Import seed manifest has unsafe ${fieldName}; symlinked path segments are not allowed.`);
+    }
+  }
+}
+
 async function loadExportManifest(sourceDir: string): Promise<ExportManifest | null> {
   const exportManifestPath = join(sourceDir, 'export-manifest.json');
   if (!existsSync(exportManifestPath)) return null;
@@ -48,6 +71,7 @@ async function runtimePrompt(sourceDir: string, runtime: RuntimeTarget): Promise
   const runtimeRoot = exportManifest?.runtimeRoot
     ? resolveBundleScopedManifestPath(sourceDir, exportManifest.runtimeRoot, 'runtimeRoot')
     : sourceDir;
+  if (exportManifest?.runtimeRoot) await assertBundlePathHasNoSymlinks(sourceDir, runtimeRoot, 'runtimeRoot');
 
   if (runtime === 'claude-code') {
     const pluginJsonPath = exportManifest ? join(runtimeRoot, 'plugin.json') : join(runtimeRoot, '.claude-plugin', 'plugin.json');
@@ -71,6 +95,8 @@ export async function importSeedProject(options: ImportSeedOptions): Promise<Har
   if (exportManifest) {
     const runtimeRoot = resolveBundleScopedManifestPath(sourceDir, exportManifest.runtimeRoot, 'runtimeRoot');
     const runtimeBundleManifestPath = resolveBundleScopedManifestPath(sourceDir, exportManifest.runtimeBundleManifestPath, 'runtimeBundleManifestPath');
+    await assertBundlePathHasNoSymlinks(sourceDir, runtimeRoot, 'runtimeRoot');
+    await assertBundlePathHasNoSymlinks(sourceDir, runtimeBundleManifestPath, 'runtimeBundleManifestPath');
     if (!existsSync(runtimeRoot) || !existsSync(runtimeBundleManifestPath)) throw new Error('Import seed manifest references missing runtime export artifacts.');
   }
   const name = options.name ?? basename(sourceDir);

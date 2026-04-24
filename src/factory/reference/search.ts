@@ -1,76 +1,139 @@
-import type { RuntimeTarget } from '../../core/types';
-import { REFERENCE_PATTERN_REGISTRY, type ReferencePatternRecord } from './catalog';
+import { listReferencePatterns, normalizeReferenceTerm, tokenizeReferenceTerms, type ReferencePattern } from './catalog';
 
-export interface ReferencePatternSearchInput {
-  intent?: string;
+const STOP_WORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'build',
+  'create',
+  'for',
+  'harness',
+  'i',
+  'in',
+  'like',
+  'make',
+  'me',
+  'my',
+  'need',
+  'of',
+  'or',
+  'the',
+  'to',
+  'want',
+  'with'
+]);
+
+export interface ReferenceSearchRequest {
+  query?: string;
   capabilities?: string[];
-  targetRuntime?: RuntimeTarget;
   limit?: number;
 }
 
 export interface ReferencePatternMatch {
-  pattern: ReferencePatternRecord;
+  pattern: ReferencePattern;
   score: number;
-  why: string;
+  matchedCapabilities: string[];
+  matchedKeywords: string[];
+  matchedBlockKinds: string[];
 }
 
-function normalize(value: string): string {
-  return value.trim().toLowerCase();
-}
+export function searchReferencePatterns(request: string | string[] | ReferenceSearchRequest): ReferencePatternMatch[] {
+  const normalizedRequest = normalizeRequest(request);
+  const capabilityTerms = uniqueTerms((normalizedRequest.capabilities ?? []).flatMap((capability) => tokenizeReferenceTerms(capability)));
+  const queryTerms = uniqueTerms(tokenizeReferenceTerms(normalizedRequest.query ?? '').filter((term) => !STOP_WORDS.has(term)));
+  const limit = clampLimit(normalizedRequest.limit);
 
-function tokenize(values: string[]): Set<string> {
-  return new Set(values.map(normalize).filter(Boolean));
-}
+  if (capabilityTerms.length === 0 && queryTerms.length === 0) return [];
 
-export function findReferencePatterns(input: ReferencePatternSearchInput): ReferencePatternMatch[] {
-  const intent = normalize(input.intent ?? '');
-  const requested = tokenize(input.capabilities ?? []);
-  const limit = input.limit ?? 3;
-
-  return REFERENCE_PATTERN_REGISTRY.map((pattern) => {
-    let score = 0;
-    const reasons: string[] = [];
-
-    for (const capability of pattern.capabilities) {
-      if (requested.has(normalize(capability))) {
-        score += 4;
-        reasons.push(`capability:${capability}`);
-      }
-    }
-
-    if (requested.has(pattern.category)) {
-      score += 5;
-      reasons.push(`category:${pattern.category}`);
-    }
-
-    for (const keyword of pattern.intentKeywords) {
-      if (intent.includes(normalize(keyword))) {
-        score += 2;
-        reasons.push(`keyword:${keyword}`);
-      }
-    }
-
-    if (input.targetRuntime && pattern.runtimeTargets.includes(input.targetRuntime)) {
-      score += 1;
-      reasons.push(`runtime:${input.targetRuntime}`);
-    }
-
-    return {
-      pattern,
-      score,
-      why: reasons.length > 0 ? reasons.join(', ') : 'fallback: seeded reference pattern'
-    };
-  })
-    .filter((match) => match.score > 0 || requested.size === 0 && intent.length === 0)
-    .sort((a, b) => b.score - a.score || a.pattern.id.localeCompare(b.pattern.id))
+  return listReferencePatterns()
+    .map((pattern) => scorePattern(pattern, capabilityTerms, queryTerms))
+    .filter((match): match is ReferencePatternMatch => match !== undefined)
+    .sort((left, right) => right.score - left.score || left.pattern.name.localeCompare(right.pattern.name))
     .slice(0, limit);
 }
 
-export function referenceSelectionsForCapabilities(input: ReferencePatternSearchInput) {
-  return findReferencePatterns(input).map((match) => ({
-    id: match.pattern.id,
-    sourceRepo: match.pattern.sourceRepos[0]?.repo ?? 'unknown',
-    why: match.why,
-    score: match.score
-  }));
+export function searchReferencePatternsByCapability(capability: string, limit = 3): ReferencePatternMatch[] {
+  return searchReferencePatterns({ capabilities: [capability], limit });
+}
+
+function scorePattern(pattern: ReferencePattern, capabilityTerms: string[], queryTerms: string[]): ReferencePatternMatch | undefined {
+  let score = 0;
+  const matchedCapabilities = new Set<string>();
+  const matchedKeywords = new Set<string>();
+  const matchedBlockKinds = new Set<string>();
+
+  const patternCapabilities = new Set(pattern.capabilities.map((capability) => normalizeReferenceTerm(capability)));
+  const patternKeywords = new Set(pattern.keywords.map((keyword) => normalizeReferenceTerm(keyword)));
+  const patternBlockKinds = new Map(pattern.blockKinds.map((kind) => [normalizeReferenceTerm(kind), kind]));
+  const patternNameTerms = new Set(tokenizeReferenceTerms(pattern.name));
+  const patternSummaryTerms = new Set(tokenizeReferenceTerms(pattern.summary));
+  const patternSourceTerms = new Set(tokenizeReferenceTerms(`${pattern.source.repo} ${pattern.source.provenance}`));
+
+  for (const term of capabilityTerms) {
+    if (patternCapabilities.has(term)) {
+      score += 12;
+      matchedCapabilities.add(term);
+      continue;
+    }
+
+    if (patternKeywords.has(term)) {
+      score += 6;
+      matchedKeywords.add(term);
+    }
+  }
+
+  for (const term of queryTerms) {
+    if (patternCapabilities.has(term)) {
+      score += 8;
+      matchedCapabilities.add(term);
+      continue;
+    }
+
+    if (patternKeywords.has(term)) {
+      score += 4;
+      matchedKeywords.add(term);
+      continue;
+    }
+
+    const matchedBlockKind = patternBlockKinds.get(term);
+    if (matchedBlockKind) {
+      score += 3;
+      matchedBlockKinds.add(matchedBlockKind);
+      continue;
+    }
+
+    if (patternNameTerms.has(term)) {
+      score += 2;
+      continue;
+    }
+
+    if (patternSummaryTerms.has(term) || patternSourceTerms.has(term)) {
+      score += 1;
+    }
+  }
+
+  if (matchedCapabilities.size > 0 && matchedKeywords.size > 0) score += 2;
+  if (score === 0) return undefined;
+
+  return {
+    pattern,
+    score,
+    matchedCapabilities: [...matchedCapabilities],
+    matchedKeywords: [...matchedKeywords],
+    matchedBlockKinds: [...matchedBlockKinds]
+  };
+}
+
+function normalizeRequest(request: string | string[] | ReferenceSearchRequest): ReferenceSearchRequest {
+  if (typeof request === 'string') return { query: request };
+  if (Array.isArray(request)) return { capabilities: request };
+  return request;
+}
+
+function clampLimit(limit = 3) {
+  return Math.max(1, Math.min(limit, 3));
+}
+
+function uniqueTerms(values: string[]) {
+  return [...new Set(values.filter(Boolean))];
 }

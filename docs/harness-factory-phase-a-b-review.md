@@ -59,4 +59,4 @@ The review lane intentionally does **not** lock one exact JSON shape yet, but it
 
 ## Review outcome for the current branch
 
-No `src/factory` implementation is present on this branch yet, so the safest additive move is to lock the boundary around the stable OMOH engine and document the seeded-pattern expectations before the worker-owned factory modules land.
+The additive `src/factory` Phase A+B slice is now present on this branch. The review guard should continue to protect the substrate boundary while allowing future factory modules to grow under `src/factory/`.

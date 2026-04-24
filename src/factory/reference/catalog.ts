@@ -1,58 +1,61 @@
-import patternRegistry from './pattern-registry.json' with { type: 'json' };
-import type { NodeKind } from '../../core/types';
+import patternRegistryJson from './pattern-registry.json' with { type: 'json' };
+import type { NodeKind, RuntimeTarget } from '../../core/types';
+
+export type ReferencePatternCategory = 'approval-gate' | 'review-loop' | 'mcp-registration' | 'state-persistence' | 'retry-loop' | 'subagent-delegation';
+export type ReferenceExtractionMode = 'manual-seed' | 'extractor';
 
 export interface ReferencePatternSource {
   repo: string;
-  relativePath: string;
-  provenance: string;
+  paths: string[];
+  summary: string;
 }
 
-export interface ReferencePattern {
+export interface ReferencePatternRecord {
   id: string;
   name: string;
+  category: ReferencePatternCategory;
   summary: string;
+  sourceRepos: ReferencePatternSource[];
   capabilities: string[];
-  keywords: string[];
-  blockKinds: NodeKind[];
-  source: ReferencePatternSource;
+  intentKeywords: string[];
+  runtimeTargets: RuntimeTarget[];
+  primitives: NodeKind[];
+  extraction: { mode: ReferenceExtractionMode; extractor?: string; notes: string };
+  applicability: { whenToUse: string; risks: string[]; followUpQuestions: string[] };
 }
 
-const REFERENCE_PATTERNS = (patternRegistry as ReferencePattern[]).map(cloneReferencePattern);
+const CATEGORIES = new Set<ReferencePatternCategory>(['approval-gate', 'review-loop', 'mcp-registration', 'state-persistence', 'retry-loop', 'subagent-delegation']);
+const RUNTIMES = new Set<RuntimeTarget>(['claude-code', 'opencode', 'codex']);
 
-export function normalizeReferenceTerm(value: string) {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  if (normalized.endsWith('ies') && normalized.length > 3) return `${normalized.slice(0, -3)}y`;
-  if (normalized.endsWith('s') && normalized.length > 3 && !normalized.endsWith('ss') && !normalized.endsWith('is')) return normalized.slice(0, -1);
-  return normalized;
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
 }
 
-export function tokenizeReferenceTerms(value: string) {
-  return value
-    .split(/[^a-zA-Z0-9]+/g)
-    .map((token) => normalizeReferenceTerm(token))
-    .filter(Boolean);
+export function validateReferencePattern(pattern: ReferencePatternRecord): ReferencePatternRecord {
+  assert(typeof pattern.id === 'string' && pattern.id.length > 0, 'Reference pattern id is required.');
+  assert(typeof pattern.name === 'string' && pattern.name.length > 0, `Reference pattern ${pattern.id} name is required.`);
+  assert(CATEGORIES.has(pattern.category), `Reference pattern ${pattern.id} category is invalid.`);
+  assert(pattern.sourceRepos.length > 0, `Reference pattern ${pattern.id} must include source repo provenance.`);
+  assert(pattern.capabilities.length > 0, `Reference pattern ${pattern.id} must include capabilities.`);
+  assert(pattern.intentKeywords.length > 0, `Reference pattern ${pattern.id} must include intent keywords.`);
+  assert(pattern.runtimeTargets.every((runtime) => RUNTIMES.has(runtime)), `Reference pattern ${pattern.id} has invalid runtime targets.`);
+  assert(pattern.primitives.length > 0, `Reference pattern ${pattern.id} must include primitives.`);
+  return pattern;
 }
 
-export function listReferencePatterns(): ReferencePattern[] {
-  return REFERENCE_PATTERNS.map(cloneReferencePattern);
+export function loadReferencePatternRegistry(): ReferencePatternRecord[] {
+  const patterns = patternRegistryJson as ReferencePatternRecord[];
+  const ids = new Set<string>();
+  return patterns.map((pattern) => {
+    const valid = validateReferencePattern(pattern);
+    assert(!ids.has(valid.id), `Duplicate reference pattern id ${valid.id}.`);
+    ids.add(valid.id);
+    return valid;
+  });
 }
 
-export function getReferencePattern(id: string): ReferencePattern | undefined {
-  const normalizedId = normalizeReferenceTerm(id);
-  const pattern = REFERENCE_PATTERNS.find((candidate) => normalizeReferenceTerm(candidate.id) === normalizedId);
-  return pattern ? cloneReferencePattern(pattern) : undefined;
-}
+export const REFERENCE_PATTERN_REGISTRY = loadReferencePatternRegistry();
 
-export function listReferenceCapabilities(): string[] {
-  return [...new Set(REFERENCE_PATTERNS.flatMap((pattern) => pattern.capabilities.map((capability) => normalizeReferenceTerm(capability))))].sort();
-}
-
-function cloneReferencePattern(pattern: ReferencePattern): ReferencePattern {
-  return {
-    ...pattern,
-    capabilities: [...pattern.capabilities],
-    keywords: [...pattern.keywords],
-    blockKinds: [...pattern.blockKinds],
-    source: { ...pattern.source }
-  };
+export function getReferencePattern(id: string): ReferencePatternRecord | undefined {
+  return REFERENCE_PATTERN_REGISTRY.find((pattern) => pattern.id === id);
 }

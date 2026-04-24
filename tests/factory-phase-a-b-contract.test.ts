@@ -7,7 +7,7 @@ import { join, relative } from 'node:path';
 const repoRoot = process.cwd();
 const reviewDocPath = join(repoRoot, 'docs', 'harness-factory-phase-a-b-review.md');
 const registryPath = join(repoRoot, 'src', 'factory', 'reference', 'pattern-registry.json');
-const allowedFactoryIntegrationImports = new Set(['src/core/runtime-setup.ts']);
+const allowedFactoryIntegrationImports = new Set(['src/core/runtime-setup.ts', 'src/web/server.ts']);
 
 function runCli(args: string[]) {
   return spawnSync('bun', ['run', 'src/index.ts', ...args], {

@@ -1,0 +1,23 @@
+:root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { margin: 0; background: #0f172a; color: #e2e8f0; }
+button, input, textarea { font: inherit; }
+button { border: 0; border-radius: 8px; background: #38bdf8; color: #082f49; padding: 0.55rem 0.8rem; font-weight: 700; }
+button:disabled { opacity: 0.45; }
+textarea, input { width: 100%; border: 1px solid #334155; border-radius: 8px; background: #020617; color: #e2e8f0; padding: 0.5rem; box-sizing: border-box; }
+.app-shell { min-height: 100vh; display: grid; grid-template-rows: auto minmax(560px, 1fr) auto; gap: 1rem; padding: 1rem; box-sizing: border-box; }
+.topbar { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+.topbar h1 { margin: 0; }
+.topbar p { margin: 0.25rem 0 0; color: #94a3b8; }
+.topbar label { width: min(360px, 40vw); color: #cbd5e1; }
+.workspace { display: grid; grid-template-columns: 300px minmax(420px, 1fr) 340px; gap: 1rem; min-height: 560px; }
+.panel, .canvas-card { background: rgba(15, 23, 42, 0.9); border: 1px solid #1e293b; border-radius: 16px; padding: 1rem; box-shadow: 0 20px 50px rgba(0,0,0,0.25); overflow: auto; }
+.canvas-card { padding: 0; }
+.panel h2 { margin-top: 0; }
+.panel h3 { margin-bottom: 0.35rem; color: #bae6fd; }
+ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
+li { display: grid; gap: 0.15rem; padding: 0.55rem; border: 1px solid #243044; border-radius: 10px; }
+li span, .panel p { color: #94a3b8; }
+.inspector-panel { display: grid; align-content: start; gap: 0.65rem; }
+.lower-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; }
+.chat-panel pre { white-space: pre-wrap; overflow: auto; max-height: 260px; background: #020617; border-radius: 8px; padding: 0.75rem; }
+.react-flow__node { color: #0f172a; }

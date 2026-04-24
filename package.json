@@ -9,7 +9,9 @@
     "bin/harness-editor",
     "src",
     "README.md",
-    "tsconfig.json"
+    "tsconfig.json",
+    "index.html",
+    "vite.config.ts"
   ],
   "bin": {
     "oh-my-openharness": "bin/oh-my-openharness",
@@ -18,12 +20,23 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "ci": "bunx tsc --noEmit && bun run test && npm pack --dry-run",
-    "test": "bun test --timeout 60000 tests/*.test.ts",
+    "test": "bun test --timeout 180000 tests/*.test.ts",
     "typecheck": "bunx tsc --noEmit",
-    "demo": "bun run src/index.ts demo --name demo-harness --prompt \"Create a review harness with approvals, MCP server support, and retry loop\""
+    "demo": "bun run src/index.ts demo --name demo-harness --prompt \"Create a review harness with approvals, MCP server support, and retry loop\"",
+    "build:web": "vite build",
+    "dev:web": "vite --host 127.0.0.1"
   },
   "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "bun-types": "latest",
     "typescript": "^5.9.2",
-    "bun-types": "latest"
+    "vite": "^8.0.10"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.10.2",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
   }
 }

@@ -71,11 +71,26 @@ describe('oh-my-openharness local server', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type') ?? '').toContain('text/html');
     const html = await res.text();
-    expect(html).toContain('server-fixture');
-    expect(html).toContain('/api/project');
-    expect(html).toContain('/api/trace');
-    expect(html).toContain('Writes protected');
-    expect(html).toContain('Mutation token');
+    expect(html).toContain('Harness Editor');
+    expect(html.includes('server-fixture') || html.includes('id="root"')).toBe(true);
+    expect(html.includes('/api/project') || html.includes('/assets/')).toBe(true);
+  });
+
+  test('serves catalog, compatibility, and empty Factory state API payloads', async () => {
+    const catalog = await fetchJson(`${handle!.url}/api/catalog`);
+    expect(catalog.status).toBe(200);
+    expect((catalog.body as { blocks: unknown[]; composites: unknown[] }).blocks.length).toBeGreaterThan(0);
+    expect((catalog.body as { blocks: unknown[]; composites: unknown[] }).composites.length).toBeGreaterThan(0);
+
+    const compatibility = await fetchJson(`${handle!.url}/api/compatibility`);
+    expect(compatibility.status).toBe(200);
+    const compatibilityPayload = compatibility.body as { targetRuntime: string; nodes: Array<{ id: string; compatibleRuntimes: string[] }> };
+    expect(compatibilityPayload.targetRuntime).toBe('claude-code');
+    expect(compatibilityPayload.nodes.length).toBeGreaterThan(0);
+
+    const factoryState = await fetchJson(`${handle!.url}/api/factory/state?sessionId=missing`);
+    expect(factoryState.status).toBe(200);
+    expect(factoryState.body).toMatchObject({ configured: false, sessionId: 'missing' });
   });
 
   test('reports no trace when sandbox has not run', async () => {
@@ -181,6 +196,39 @@ describe('oh-my-openharness local server', () => {
     expect(deleteNode.status).toBe(200);
     const deletePayload = deleteNode.body as { nodes: Array<{ id: string }> };
     expect(deletePayload.nodes.some((node) => node.id === addedNode!.id)).toBe(false);
+  });
+
+  test('updates skill markdown through the inspector endpoint', async () => {
+    const projectBefore = await fetchJson(`${handle!.url}/api/project`);
+    const skill = (projectBefore.body as { skills: Array<{ id: string; name: string; content: string; path?: string }> }).skills[0]!;
+    const nextContent = `${skill.content}\n\n## Inspector note\nSaved from React inspector.`;
+
+    const update = await fetchJson(`${handle!.url}/api/project/skill`, mutationInit(handle!, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skillId: skill.id, content: nextContent })
+    }));
+
+    expect(update.status).toBe(200);
+    const updatedSkill = (update.body as { skills: Array<{ id: string; content: string }> }).skills.find((entry) => entry.id === skill.id);
+    expect(updatedSkill?.content).toContain('Inspector note');
+    const persisted = await readFile(join(fixture!.projectDir, 'skills', skill.path ?? `${skill.name}.md`), 'utf8');
+    expect(persisted).toContain('Inspector note');
+  });
+
+  test('Factory chat endpoint routes prompts into interview state', async () => {
+    const result = await fetchJson(`${handle!.url}/api/factory/chat`, mutationInit(handle!, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'server-chat', text: 'Build a Claude harness with approval and MCP support' })
+    }));
+
+    expect(result.status).toBe(200);
+    const payload = result.body as { ok: boolean; route: string; state: { sessionId: string; stage: string; openQuestions: unknown[] } };
+    expect(payload.ok).toBe(true);
+    expect(payload.state.sessionId).toBe('server-chat');
+    expect(['ask-question', 'draft', 'build']).toContain(payload.route);
+    expect(payload.state.openQuestions.length).toBeGreaterThanOrEqual(0);
   });
 
   test('editor mutations preserve confirmed gates and host-authored guidance', async () => {

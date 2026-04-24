@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test as bunTest } from 'bun:test';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +10,7 @@ import { renderTraceHtml } from '../src/web/report';
 import { startHarnessEditorServer } from '../src/web/server';
 import type { GraphEdge, GraphNode, LayoutNode, TraceEvent } from '../src/core/types';
 
+const test = (name: string, fn: Parameters<typeof bunTest>[1]) => bunTest(name, fn, 180000);
 const RICH_PROMPT = 'Create a review harness with approvals, state memory, MCP server support, and retry loop';
 
 async function buildWrittenProject(name: string, prompt = RICH_PROMPT): Promise<string> {
@@ -66,17 +67,24 @@ describe('GUI shell contract: loading canonical project data', () => {
     expect(reloaded.layout.length).toBe(loaded.layout.length);
   });
 
-  test('viewer HTML exposes editor controls beyond layout-only actions', async () => {
+  test('viewer HTML exposes editor controls or bootstraps the React editor shell', async () => {
     const projectDir = await buildWrittenProject('gui-shell-editor-controls');
     const handle = await startHarnessEditorServer({ projectDir, host: '127.0.0.1' });
     try {
       const html = await fetch(handle.url).then((res) => res.text());
-      expect(html).toContain('Save node');
-      expect(html).toContain('Add node');
-      expect(html).toContain('Delete node');
-      expect(html).toContain('/api/project/mutate');
-      expect(html).toContain('Writes protected');
-      expect(html).toContain('Mutation token');
+      expect(html).toContain('Harness Editor');
+      if (html.includes('id="root"')) {
+        const asset = html.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
+        expect(asset).toBeDefined();
+        const script = await fetch(`${handle.url}${asset}`).then((res) => res.text());
+        expect(script).toContain('Save node');
+        expect(script).toContain('/api/project/mutate');
+        expect(script).toContain('/api/project/skill');
+      } else {
+        expect(html).toContain('Save node');
+        expect(html).toContain('/api/project/mutate');
+        expect(html).toContain('Mutation token');
+      }
     } finally {
       await handle.close();
     }

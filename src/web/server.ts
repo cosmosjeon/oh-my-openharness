@@ -1,11 +1,15 @@
 import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { refreshDerivedProject } from '../core/generator';
 import { loadHarnessProject, writeHarnessProject } from '../core/project';
-import type { GraphEdge, GraphNode, HarnessProject, LayoutNode, TraceEvent } from '../core/types';
+import type { GraphEdge, GraphNode, HarnessProject, LayoutNode, SkillFile, TraceEvent } from '../core/types';
 import { describeRuntimeTarget } from '../core/runtime-targets';
+import { createHarnessFactoryStore, type HarnessFactoryState } from '../factory/state';
+import { applyAnswer, queueNextQuestion } from '../factory/interview';
+import { routeFactoryPrompt } from '../factory/hooks/routing';
+import { orchestrateFactoryAction, type FactoryActionOrchestrationResult } from '../factory/actions';
 import { renderViewerHtml } from './viewer';
 
 export interface ServerOptions {
@@ -14,6 +18,8 @@ export interface ServerOptions {
   host?: string;
   tracePath?: string;
   apiToken?: string;
+  staticRoot?: string;
+  factoryStateRoot?: string;
 }
 
 export interface ServerHandle {
@@ -29,6 +35,7 @@ interface ProjectPayload {
   nodes: HarnessProject['nodes'];
   edges: HarnessProject['edges'];
   layout: HarnessProject['layout'];
+  skills: HarnessProject['skills'];
   composites: HarnessProject['composites'];
   customBlocks: HarnessProject['customBlocks'];
   registry: HarnessProject['registry'];
@@ -52,6 +59,22 @@ type EditorMutationBody =
   | { action: 'delete-node'; nodeId: string }
   | { action: 'add-edge'; from: string; to: string; label?: string }
   | { action: 'delete-edge'; edgeId: string };
+
+type SkillMutationBody =
+  | { skillId: string; content: string; description?: string }
+  | { name: string; content: string; description?: string };
+
+type FactoryChatBody = {
+  sessionId?: string;
+  text?: string;
+  action?: 'draft' | 'build' | 'preview' | 'verify' | 'export';
+  questionId?: string;
+  workspaceDir?: string;
+  projectName?: string;
+  projectPath?: string;
+  outDir?: string;
+  confirmRisk?: boolean;
+};
 
 async function readTraceFile(path: string): Promise<TraceEvent[]> {
   const raw = await readFile(path, 'utf8');
@@ -105,6 +128,7 @@ function toProjectPayload(project: HarnessProject): ProjectPayload {
     nodes: project.nodes,
     edges: project.edges,
     layout: project.layout,
+    skills: project.skills,
     composites: project.composites,
     customBlocks: project.customBlocks,
     registry: project.registry,
@@ -131,6 +155,35 @@ function sendHtml(res: ServerResponse, status: number, body: string) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
   res.end(body);
+}
+
+function contentTypeFor(path: string): string {
+  const ext = extname(path);
+  if (ext === '.html') return 'text/html; charset=utf-8';
+  if (ext === '.js') return 'text/javascript; charset=utf-8';
+  if (ext === '.css') return 'text/css; charset=utf-8';
+  if (ext === '.svg') return 'image/svg+xml';
+  if (ext === '.json') return 'application/json; charset=utf-8';
+  return 'application/octet-stream';
+}
+
+function isPathInside(parent: string, child: string): boolean {
+  const relativePath = relative(parent, child);
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
+}
+
+async function sendStaticFile(res: ServerResponse, filePath: string): Promise<boolean> {
+  try {
+    const body = await readFile(filePath);
+    res.statusCode = 200;
+    res.setHeader('Content-Type', contentTypeFor(filePath));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(body);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
 }
 
 function sendNotFound(res: ServerResponse, message: string) {
@@ -316,6 +369,119 @@ async function persistLayout(projectDir: string, project: HarnessProject, layout
   return merged;
 }
 
+function resolveFactoryStateRoot(projectDir: string, options: ServerOptions): string {
+  return resolve(options.factoryStateRoot ?? process.env.HARNESS_FACTORY_STATE_DIR ?? join(projectDir, '.omx', 'factory-state'));
+}
+
+function sessionIdFrom(url: URL, value: unknown): string {
+  const fromBody = typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  return fromBody ?? url.searchParams.get('sessionId') ?? 'default';
+}
+
+async function parseJsonBody(req: IncomingMessage): Promise<unknown> {
+  const body = await readRequestBody(req);
+  if (!body) return {};
+  return JSON.parse(body);
+}
+
+function findSkill(project: HarnessProject, body: SkillMutationBody): SkillFile | undefined {
+  if ('skillId' in body) return project.skills.find((skill) => skill.id === body.skillId);
+  return project.skills.find((skill) => skill.name === body.name);
+}
+
+async function updateProjectSkill(projectDir: string, project: HarnessProject, body: SkillMutationBody): Promise<ProjectPayload> {
+  if (typeof body.content !== 'string') throw new Error('Invalid skill mutation: content must be a string.');
+  const skill = findSkill(project, body);
+  if (!skill) throw new Error('Invalid skill mutation: unknown skill.');
+  const nextProject: HarnessProject = {
+    ...project,
+    skills: project.skills.map((entry) =>
+      entry.id === skill.id
+        ? { ...entry, content: body.content, ...(body.description !== undefined ? { description: body.description } : {}) }
+        : entry
+    )
+  };
+  return persistProject(projectDir, nextProject);
+}
+
+async function loadFactoryState(projectDir: string, options: ServerOptions, sessionId: string): Promise<{ stateRoot: string; state?: HarnessFactoryState; error?: string }> {
+  const stateRoot = resolveFactoryStateRoot(projectDir, options);
+  const store = createHarnessFactoryStore(stateRoot);
+  try {
+    return { stateRoot, state: await store.load(sessionId) };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { stateRoot };
+    return { stateRoot, error: (error as Error).message };
+  }
+}
+
+async function handleFactoryChat(projectDir: string, url: URL, options: ServerOptions, body: FactoryChatBody): Promise<{
+  ok: boolean;
+  route: string;
+  reason: string;
+  state?: HarnessFactoryState;
+  question?: unknown;
+  result?: Omit<FactoryActionOrchestrationResult, 'previewHandle'>;
+  error?: string;
+}> {
+  const text = typeof body.text === 'string' && body.text.trim() ? body.text.trim() : 'continue';
+  const sessionId = sessionIdFrom(url, body.sessionId);
+  const stateRoot = resolveFactoryStateRoot(projectDir, options);
+  const store = createHarnessFactoryStore(stateRoot);
+  let state: HarnessFactoryState;
+  try {
+    state = await store.load(sessionId);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    state = await store.create({ sessionId, userIntent: text });
+  }
+
+  if (body.questionId || state.openQuestions.some((question) => !question.answeredAt)) {
+    state = await store.save(applyAnswer(state, { answer: text, ...(body.questionId ? { questionId: body.questionId } : {}) }));
+  }
+
+  const route = body.action ? { route: body.action, reason: `Explicit Factory action requested: ${body.action}.` } : routeFactoryPrompt(state, text);
+  if (route.route === 'ask-question') {
+    const queued = queueNextQuestion(state);
+    const saved = queued.state === state ? state : await store.save(queued.state);
+    return { ok: true, route: 'ask-question', reason: route.reason, state: saved, question: queued.question ?? route.question };
+  }
+
+  if (route.route === 'preview') {
+    return {
+      ok: true,
+      route: 'preview',
+      reason: route.reason,
+      state,
+      result: {
+        ok: true,
+        action: 'preview',
+        state,
+        record: {
+          action: 'preview',
+          status: 'idle',
+          startedAt: new Date().toISOString(),
+          message: 'Preview is already served by the current editor server.'
+        },
+        preview: { url: '/', host: options.host ?? '127.0.0.1', port: options.port ?? 0, apiToken: options.apiToken ?? '', mutationProtection: 'token+same-origin' }
+      }
+    };
+  }
+
+  const result = await orchestrateFactoryAction({
+    store,
+    sessionId,
+    action: route.route,
+    workspaceDir: body.workspaceDir ?? dirname(projectDir),
+    ...(body.projectName ? { projectName: body.projectName } : {}),
+    ...(body.projectPath ? { projectPath: body.projectPath } : {}),
+    ...(body.outDir ? { outDir: body.outDir } : {}),
+    ...(body.confirmRisk !== undefined ? { confirmRisk: body.confirmRisk } : {})
+  });
+  const { previewHandle: _previewHandle, ...serializable } = result;
+  return { ok: result.ok, route: route.route, reason: route.reason, state: result.state, result: serializable };
+}
+
 export async function handleRequest(req: IncomingMessage, res: ServerResponse, options: ServerOptions) {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const projectDir = resolve(options.projectDir);
@@ -323,13 +489,60 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
   try {
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       const project = await loadHarnessProject(projectDir);
+      const staticRoot = resolve(options.staticRoot ?? resolve('dist', 'web-client'));
+      if (await sendStaticFile(res, join(staticRoot, 'index.html'))) return;
       sendHtml(res, 200, renderViewerHtml(project.manifest.name));
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname.startsWith('/assets/')) {
+      const staticRoot = resolve(options.staticRoot ?? resolve('dist', 'web-client'));
+      const assetPath = resolve(staticRoot, `.${url.pathname}`);
+      if (!isPathInside(staticRoot, assetPath)) {
+        sendJson(res, 400, { error: 'Invalid asset path' });
+        return;
+      }
+      if (await sendStaticFile(res, assetPath)) return;
+      sendNotFound(res, `No route for ${req.method} ${url.pathname}`);
       return;
     }
 
     if (req.method === 'GET' && url.pathname === '/api/project') {
       const project = await loadHarnessProject(projectDir);
       sendJson(res, 200, toProjectPayload(project));
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/catalog') {
+      const project = await loadHarnessProject(projectDir);
+      sendJson(res, 200, project.registry);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/compatibility') {
+      const project = await loadHarnessProject(projectDir);
+      sendJson(res, 200, {
+        targetRuntime: project.manifest.targetRuntime,
+        supportedRuntimes: project.manifest.supportedRuntimes ?? [project.manifest.targetRuntime],
+        nodes: project.nodes.map((node) => ({
+          id: node.id,
+          kind: node.kind,
+          compatibleRuntimes: project.registry.blocks.find((block) => block.kind === node.kind)?.compatibleRuntimes ?? []
+        }))
+      });
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/factory/state') {
+      const sessionId = sessionIdFrom(url, undefined);
+      const loaded = await loadFactoryState(projectDir, options, sessionId);
+      sendJson(res, loaded.error ? 500 : 200, {
+        configured: Boolean(loaded.state),
+        stateRoot: loaded.stateRoot,
+        sessionId,
+        ...(loaded.state ? { state: loaded.state } : {}),
+        ...(loaded.error ? { error: loaded.error } : {})
+      });
       return;
     }
 
@@ -345,12 +558,27 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
       return;
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/factory/chat') {
+      if (!authorizeMutationRequest(req, res, options.apiToken ?? '')) return;
+      try {
+        const parsed = await parseJsonBody(req);
+        if (!isRecord(parsed)) {
+          sendJson(res, 400, { error: 'Body must be a JSON object' });
+          return;
+        }
+        const payload = await handleFactoryChat(projectDir, url, options, parsed as FactoryChatBody);
+        sendJson(res, payload.error ? 500 : 200, payload);
+      } catch (error) {
+        sendJson(res, 500, { error: (error as Error).message });
+      }
+      return;
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/layout') {
       if (!authorizeMutationRequest(req, res, options.apiToken ?? '')) return;
-      const body = await readRequestBody(req);
       let parsed: unknown;
       try {
-        parsed = body ? JSON.parse(body) : {};
+        parsed = await parseJsonBody(req);
       } catch {
         sendJson(res, 400, { error: 'Invalid JSON body' });
         return;
@@ -368,10 +596,9 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
 
     if (req.method === 'POST' && url.pathname === '/api/project/mutate') {
       if (!authorizeMutationRequest(req, res, options.apiToken ?? '')) return;
-      const body = await readRequestBody(req);
       let parsed: unknown;
       try {
-        parsed = body ? JSON.parse(body) : {};
+        parsed = await parseJsonBody(req);
       } catch {
         sendJson(res, 400, { error: 'Invalid JSON body' });
         return;
@@ -387,6 +614,30 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
       } catch (error) {
         const message = (error as Error).message;
         sendJson(res, message.startsWith('Invalid editor mutation') ? 400 : 500, { error: message });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/project/skill') {
+      if (!authorizeMutationRequest(req, res, options.apiToken ?? '')) return;
+      let parsed: unknown;
+      try {
+        parsed = await parseJsonBody(req);
+      } catch {
+        sendJson(res, 400, { error: 'Invalid JSON body' });
+        return;
+      }
+      if (!isRecord(parsed) || typeof parsed.content !== 'string') {
+        sendJson(res, 400, { error: 'Body must include skillId or name plus content.' });
+        return;
+      }
+      try {
+        const project = await loadHarnessProject(projectDir);
+        const payload = await updateProjectSkill(projectDir, project, parsed as SkillMutationBody);
+        sendJson(res, 200, payload);
+      } catch (error) {
+        const message = (error as Error).message;
+        sendJson(res, message.startsWith('Invalid skill mutation') ? 400 : 500, { error: message });
       }
       return;
     }

@@ -18,6 +18,9 @@ const STOP_WORDS = new Set([
   'of',
   'or',
   'the',
+  'these',
+  'this',
+  'those',
   'to',
   'want',
   'with'

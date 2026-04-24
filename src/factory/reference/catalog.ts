@@ -22,7 +22,7 @@ const REFERENCE_PATTERNS = (patternRegistry as ReferencePattern[]).map(cloneRefe
 export function normalizeReferenceTerm(value: string) {
   const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   if (normalized.endsWith('ies') && normalized.length > 3) return `${normalized.slice(0, -3)}y`;
-  if (normalized.endsWith('s') && normalized.length > 3) return normalized.slice(0, -1);
+  if (normalized.endsWith('s') && normalized.length > 3 && !normalized.endsWith('ss') && !normalized.endsWith('is')) return normalized.slice(0, -1);
   return normalized;
 }
 

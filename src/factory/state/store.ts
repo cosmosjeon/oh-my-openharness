@@ -21,7 +21,7 @@ export function resolveHarnessFactoryStatePath(baseDir: string, relativePath = D
 export async function readHarnessFactoryState(baseDir: string, relativePath = DEFAULT_HARNESS_FACTORY_STATE_PATH): Promise<HarnessFactoryState | undefined> {
   const statePath = resolveHarnessFactoryStatePath(baseDir, relativePath);
   try {
-    return JSON.parse(await readFile(statePath, 'utf8')) as HarnessFactoryState;
+    return createHarnessFactoryState(JSON.parse(await readFile(statePath, 'utf8')) as CreateHarnessFactoryStateInput);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw error;

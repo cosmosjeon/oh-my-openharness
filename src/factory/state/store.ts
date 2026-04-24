@@ -1,49 +1,65 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { createHarnessFactoryState, validateHarnessFactoryState, withFactoryStateUpdate, type CreateHarnessFactoryStateInput, type HarnessFactoryState } from './schema';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { createHarnessFactoryState, type CreateHarnessFactoryStateInput, type HarnessFactoryState } from './schema';
 
-export interface HarnessFactoryStore {
-  rootDir: string;
-  statePath(sessionId: string): string;
-  create(input: CreateHarnessFactoryStateInput): Promise<HarnessFactoryState>;
-  load(sessionId: string): Promise<HarnessFactoryState>;
-  save(state: HarnessFactoryState): Promise<HarnessFactoryState>;
-  update(sessionId: string, updater: (state: HarnessFactoryState) => HarnessFactoryState | Partial<HarnessFactoryState>): Promise<HarnessFactoryState>;
+export const DEFAULT_HARNESS_FACTORY_STATE_PATH = '.omx/state/harness-factory/state.json';
+
+function resolveContainedPath(baseDir: string, relativePath: string): string {
+  const resolvedBaseDir = resolve(baseDir);
+  const candidate = resolve(resolvedBaseDir, relativePath);
+  const candidateRelative = relative(resolvedBaseDir, candidate);
+  if (candidateRelative.startsWith('..') || isAbsolute(candidateRelative)) {
+    throw new Error(`Harness factory state path must stay within ${resolvedBaseDir}.`);
+  }
+  return candidate;
 }
 
-function safeSessionId(sessionId: string): string {
-  const normalized = sessionId.trim();
-  if (!/^[A-Za-z0-9._-]+$/.test(normalized)) throw new Error('Harness Factory session id may contain only letters, numbers, dot, underscore, and dash.');
-  return normalized;
+export function resolveHarnessFactoryStatePath(baseDir: string, relativePath = DEFAULT_HARNESS_FACTORY_STATE_PATH): string {
+  return resolveContainedPath(baseDir, relativePath);
 }
 
-export function createHarnessFactoryStore(rootDir: string): HarnessFactoryStore {
-  const resolvedRoot = resolve(rootDir);
-  const statePath = (sessionId: string) => join(resolvedRoot, `${safeSessionId(sessionId)}.json`);
+export async function readHarnessFactoryState(baseDir: string, relativePath = DEFAULT_HARNESS_FACTORY_STATE_PATH): Promise<HarnessFactoryState | undefined> {
+  const statePath = resolveHarnessFactoryStatePath(baseDir, relativePath);
+  try {
+    return JSON.parse(await readFile(statePath, 'utf8')) as HarnessFactoryState;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
 
+export async function writeHarnessFactoryState(baseDir: string, state: HarnessFactoryState, relativePath = DEFAULT_HARNESS_FACTORY_STATE_PATH): Promise<string> {
+  const statePath = resolveHarnessFactoryStatePath(baseDir, relativePath);
+  await mkdir(dirname(statePath), { recursive: true });
+  const normalizedState = createHarnessFactoryState({
+    ...state,
+    draft: state.draft,
+    draftGraphSpec: state.draftGraphSpec
+  });
+  await writeFile(statePath, JSON.stringify(normalizedState, null, 2));
+  return statePath;
+}
+
+export async function updateHarnessFactoryState(
+  baseDir: string,
+  updater: (state: HarnessFactoryState | undefined) => HarnessFactoryState,
+  options?: {
+    relativePath?: string;
+    initialState?: CreateHarnessFactoryStateInput;
+  }
+): Promise<HarnessFactoryState> {
+  const existing = await readHarnessFactoryState(baseDir, options?.relativePath);
+  const nextState = updater(existing ?? (options?.initialState ? createHarnessFactoryState(options.initialState) : undefined));
+  await writeHarnessFactoryState(baseDir, nextState, options?.relativePath);
+  return nextState;
+}
+
+export function createHarnessFactoryStateStore(baseDir: string, relativePath = DEFAULT_HARNESS_FACTORY_STATE_PATH) {
   return {
-    rootDir: resolvedRoot,
-    statePath,
-    async create(input) {
-      const state = createHarnessFactoryState(input);
-      return this.save(state);
-    },
-    async load(sessionId) {
-      return validateHarnessFactoryState(JSON.parse(await readFile(statePath(sessionId), 'utf8')));
-    },
-    async save(state) {
-      const valid = validateHarnessFactoryState(state);
-      await mkdir(resolvedRoot, { recursive: true });
-      await writeFile(statePath(valid.sessionId), JSON.stringify(valid, null, 2));
-      return valid;
-    },
-    async update(sessionId, updater) {
-      const current = await this.load(sessionId);
-      const next = updater(current);
-      const merged = 'schemaVersion' in next && 'sessionId' in next ? (next as HarnessFactoryState) : withFactoryStateUpdate(current, next as Partial<HarnessFactoryState>);
-      return this.save(merged);
-    }
+    path: resolveHarnessFactoryStatePath(baseDir, relativePath),
+    load: () => readHarnessFactoryState(baseDir, relativePath),
+    save: (state: HarnessFactoryState) => writeHarnessFactoryState(baseDir, state, relativePath),
+    update: (updater: (state: HarnessFactoryState | undefined) => HarnessFactoryState, initialState?: CreateHarnessFactoryStateInput) =>
+      updateHarnessFactoryState(baseDir, updater, { relativePath, ...(initialState ? { initialState } : {}) })
   };
 }
-
-export * from './schema';

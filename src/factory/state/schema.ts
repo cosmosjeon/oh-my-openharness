@@ -1,69 +1,52 @@
-import type { GraphEdge, GraphNode, RuntimeIntent, RuntimeTarget, SkillFile } from '../../core/types';
+import type { RuntimeTarget } from '../../core/types';
+import {
+  createHarnessFactoryDraft,
+  emptyHarnessFactoryDraftGraphSpec,
+  type CreateHarnessFactoryDraftInput,
+  type HarnessFactoryDecision,
+  type HarnessFactoryDraftGraphSpec,
+  type HarnessFactoryDraftSpec,
+  type HarnessFactoryReferencePattern
+} from '../synthesis/draft-spec';
+
+export const HARNESS_FACTORY_STATE_VERSION = '0.1.0';
 
 export type HarnessFactoryStage = 'intake' | 'interview' | 'drafting' | 'built' | 'previewing' | 'verifying';
-export type HarnessFactoryDecisionSource = 'user' | 'reference' | 'derived';
-export type HarnessFactoryVerificationStatus = 'not-run' | 'running' | 'passed' | 'failed';
 
-export interface HarnessFactoryDecision {
-  key: string;
-  value: unknown;
-  source: HarnessFactoryDecisionSource;
-  createdAt: string;
-}
-
-export interface HarnessFactoryQuestion {
+export interface HarnessFactoryOpenQuestion {
   id: string;
   question: string;
   reason: string;
   priority: number;
-  createdAt: string;
-  answeredAt?: string;
+  askedAt?: string;
 }
 
-export interface HarnessFactoryReferencePatternSelection {
-  id: string;
-  sourceRepo: string;
-  why: string;
-  score?: number;
-}
-
-export interface HarnessFactoryDraftGraphSpec {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  runtimeIntents: RuntimeIntent[];
-  skills: SkillFile[];
-}
-
-export interface HarnessFactoryPreviewStatus {
+export interface HarnessFactoryPreviewState {
   url?: string;
   lastOpenedAt?: string;
-  status?: 'not-opened' | 'open' | 'closed' | 'error';
-  error?: string;
 }
 
-export interface HarnessFactoryVerification {
-  status: HarnessFactoryVerificationStatus;
+export interface HarnessFactoryVerificationState {
   lastRunAt?: string;
   ok?: boolean;
   summary?: string;
-  traceFile?: string;
-  error?: string;
 }
 
 export interface HarnessFactoryState {
-  schemaVersion: '0.1.0';
+  schemaVersion: string;
   sessionId: string;
   stage: HarnessFactoryStage;
   userIntent: string;
   targetRuntime?: RuntimeTarget;
   requestedCapabilities: string[];
-  openQuestions: HarnessFactoryQuestion[];
   confirmedDecisions: HarnessFactoryDecision[];
-  referencePatterns: HarnessFactoryReferencePatternSelection[];
+  openQuestions: HarnessFactoryOpenQuestion[];
+  referencePatterns: HarnessFactoryReferencePattern[];
   draftGraphSpec: HarnessFactoryDraftGraphSpec;
+  draft?: HarnessFactoryDraftSpec;
   projectPath?: string;
-  preview: HarnessFactoryPreviewStatus;
-  verification: HarnessFactoryVerification;
+  preview?: HarnessFactoryPreviewState;
+  verification?: HarnessFactoryVerificationState;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,98 +54,164 @@ export interface HarnessFactoryState {
 export interface CreateHarnessFactoryStateInput {
   sessionId: string;
   userIntent: string;
+  stage?: HarnessFactoryStage;
   targetRuntime?: RuntimeTarget;
   requestedCapabilities?: string[];
-  openQuestions?: Array<Omit<HarnessFactoryQuestion, 'createdAt'>>;
-  confirmedDecisions?: Array<Omit<HarnessFactoryDecision, 'createdAt'>>;
-  referencePatterns?: HarnessFactoryReferencePatternSelection[];
+  confirmedDecisions?: HarnessFactoryDecision[];
+  openQuestions?: HarnessFactoryOpenQuestion[];
+  referencePatterns?: HarnessFactoryReferencePattern[];
   draftGraphSpec?: Partial<HarnessFactoryDraftGraphSpec>;
+  draft?: HarnessFactoryDraftSpec | CreateHarnessFactoryDraftInput;
   projectPath?: string;
-  now?: string;
+  preview?: HarnessFactoryPreviewState;
+  verification?: HarnessFactoryVerificationState;
+  createdAt?: string;
+  updatedAt?: string;
+  schemaVersion?: string;
 }
 
-const RUNTIME_TARGETS = new Set<RuntimeTarget>(['claude-code', 'opencode', 'codex']);
-const STAGES = new Set<HarnessFactoryStage>(['intake', 'interview', 'drafting', 'built', 'previewing', 'verifying']);
-
-function assert(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(message);
+function normalizeString(value: string): string {
+  return value.trim();
 }
 
-function assertString(value: unknown, label: string): string {
-  assert(typeof value === 'string' && value.trim().length > 0, `${label} must be a non-empty string.`);
-  return value;
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const value of values.map(normalizeString).filter(Boolean)) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(value);
+  }
+  return normalized;
 }
 
-function assertStringArray(value: unknown, label: string): string[] {
-  assert(Array.isArray(value), `${label} must be an array.`);
-  for (const [index, item] of value.entries()) assertString(item, `${label}[${index}]`);
-  return value;
+function normalizeOpenQuestions(questions: HarnessFactoryOpenQuestion[]): HarnessFactoryOpenQuestion[] {
+  const byId = new Map<string, HarnessFactoryOpenQuestion>();
+  for (const question of questions) {
+    const id = normalizeString(question.id);
+    const prompt = normalizeString(question.question);
+    const reason = normalizeString(question.reason);
+    if (!id || !prompt || !reason) continue;
+    byId.set(id.toLowerCase(), {
+      ...question,
+      id,
+      question: prompt,
+      reason,
+      priority: Number.isFinite(question.priority) ? question.priority : 100
+    });
+  }
+  return [...byId.values()].sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id));
 }
 
-function assertRecord(value: unknown, label: string): Record<string, unknown> {
-  assert(typeof value === 'object' && value !== null && !Array.isArray(value), `${label} must be an object.`);
-  return value as Record<string, unknown>;
+function normalizeDecisions(decisions: HarnessFactoryDecision[]): HarnessFactoryDecision[] {
+  const byKey = new Map<string, HarnessFactoryDecision>();
+  for (const decision of decisions) {
+    const key = normalizeString(decision.key);
+    if (!key) continue;
+    byKey.set(key.toLowerCase(), { ...decision, key });
+  }
+  return [...byKey.values()];
 }
 
-function normalizeCapabilities(capabilities: string[]): string[] {
-  return Array.from(new Set(capabilities.map((item) => item.trim()).filter(Boolean)));
+function normalizeReferencePatterns(patterns: HarnessFactoryReferencePattern[]): HarnessFactoryReferencePattern[] {
+  const byId = new Map<string, HarnessFactoryReferencePattern>();
+  for (const pattern of patterns) {
+    const id = normalizeString(pattern.id);
+    const sourceRepo = normalizeString(pattern.sourceRepo);
+    const why = normalizeString(pattern.why);
+    if (!id || !sourceRepo || !why) continue;
+    byId.set(id.toLowerCase(), {
+      ...pattern,
+      id,
+      sourceRepo,
+      why,
+      capability: pattern.capability ? normalizeString(pattern.capability) : undefined
+    });
+  }
+  return [...byId.values()];
 }
 
-export function emptyDraftGraphSpec(): HarnessFactoryDraftGraphSpec {
-  return { nodes: [], edges: [], runtimeIntents: [], skills: [] };
+function normalizeDraft(draft?: HarnessFactoryDraftSpec | CreateHarnessFactoryDraftInput): HarnessFactoryDraftSpec | undefined {
+  if (!draft) return undefined;
+  return 'graph' in draft && 'targetRuntime' in draft && 'requestedCapabilities' in draft ? draft : createHarnessFactoryDraft(draft);
 }
 
 export function createHarnessFactoryState(input: CreateHarnessFactoryStateInput): HarnessFactoryState {
-  const now = input.now ?? new Date().toISOString();
-  const draft = input.draftGraphSpec ?? {};
-  return validateHarnessFactoryState({
-    schemaVersion: '0.1.0',
-    sessionId: input.sessionId,
-    stage: 'intake',
-    userIntent: input.userIntent,
+  const sessionId = normalizeString(input.sessionId);
+  const userIntent = normalizeString(input.userIntent);
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const updatedAt = input.updatedAt ?? createdAt;
+  const draft = normalizeDraft(input.draft);
+  const draftGraphSpec = draft?.graph ?? {
+    ...emptyHarnessFactoryDraftGraphSpec(),
+    ...input.draftGraphSpec
+  };
+
+  if (!sessionId) throw new Error('Harness factory state requires a non-empty sessionId.');
+  if (!userIntent) throw new Error('Harness factory state requires a non-empty userIntent.');
+
+  return {
+    schemaVersion: input.schemaVersion ?? HARNESS_FACTORY_STATE_VERSION,
+    sessionId,
+    stage: input.stage ?? 'intake',
+    userIntent,
     ...(input.targetRuntime ? { targetRuntime: input.targetRuntime } : {}),
-    requestedCapabilities: normalizeCapabilities(input.requestedCapabilities ?? []),
-    openQuestions: (input.openQuestions ?? []).map((question) => ({ ...question, createdAt: now })),
-    confirmedDecisions: (input.confirmedDecisions ?? []).map((decision) => ({ ...decision, createdAt: now })),
-    referencePatterns: input.referencePatterns ?? [],
-    draftGraphSpec: {
-      nodes: draft.nodes ?? [],
-      edges: draft.edges ?? [],
-      runtimeIntents: draft.runtimeIntents ?? [],
-      skills: draft.skills ?? []
-    },
-    ...(input.projectPath ? { projectPath: input.projectPath } : {}),
-    preview: { status: 'not-opened' },
-    verification: { status: 'not-run' },
-    createdAt: now,
-    updatedAt: now
-  });
+    requestedCapabilities: uniqueStrings(input.requestedCapabilities ?? draft?.requestedCapabilities ?? []),
+    confirmedDecisions: normalizeDecisions(input.confirmedDecisions ?? draft?.confirmedDecisions ?? []),
+    openQuestions: normalizeOpenQuestions(input.openQuestions ?? []),
+    referencePatterns: normalizeReferencePatterns(input.referencePatterns ?? draft?.referencePatterns ?? []),
+    draftGraphSpec,
+    ...(draft ? { draft } : {}),
+    ...(input.projectPath ? { projectPath: normalizeString(input.projectPath) } : {}),
+    ...(input.preview ? { preview: { ...input.preview } } : {}),
+    ...(input.verification ? { verification: { ...input.verification } } : {}),
+    createdAt,
+    updatedAt
+  };
 }
 
-export function validateHarnessFactoryState(value: unknown): HarnessFactoryState {
-  const state = assertRecord(value, 'HarnessFactoryState');
-  assert(state.schemaVersion === '0.1.0', 'HarnessFactoryState.schemaVersion must be 0.1.0.');
-  assertString(state.sessionId, 'HarnessFactoryState.sessionId');
-  assert(STAGES.has(state.stage as HarnessFactoryStage), 'HarnessFactoryState.stage is invalid.');
-  assertString(state.userIntent, 'HarnessFactoryState.userIntent');
-  if (state.targetRuntime !== undefined) assert(RUNTIME_TARGETS.has(state.targetRuntime as RuntimeTarget), 'HarnessFactoryState.targetRuntime is invalid.');
-  assertStringArray(state.requestedCapabilities, 'HarnessFactoryState.requestedCapabilities');
-  assert(Array.isArray(state.openQuestions), 'HarnessFactoryState.openQuestions must be an array.');
-  assert(Array.isArray(state.confirmedDecisions), 'HarnessFactoryState.confirmedDecisions must be an array.');
-  assert(Array.isArray(state.referencePatterns), 'HarnessFactoryState.referencePatterns must be an array.');
-  const draft = assertRecord(state.draftGraphSpec, 'HarnessFactoryState.draftGraphSpec');
-  assert(Array.isArray(draft.nodes), 'HarnessFactoryState.draftGraphSpec.nodes must be an array.');
-  assert(Array.isArray(draft.edges), 'HarnessFactoryState.draftGraphSpec.edges must be an array.');
-  assert(Array.isArray(draft.runtimeIntents), 'HarnessFactoryState.draftGraphSpec.runtimeIntents must be an array.');
-  assert(Array.isArray(draft.skills), 'HarnessFactoryState.draftGraphSpec.skills must be an array.');
-  if (state.projectPath !== undefined) assertString(state.projectPath, 'HarnessFactoryState.projectPath');
-  assertRecord(state.preview, 'HarnessFactoryState.preview');
-  assertRecord(state.verification, 'HarnessFactoryState.verification');
-  assertString(state.createdAt, 'HarnessFactoryState.createdAt');
-  assertString(state.updatedAt, 'HarnessFactoryState.updatedAt');
-  return state as unknown as HarnessFactoryState;
+export function withHarnessFactoryStage(state: HarnessFactoryState, stage: HarnessFactoryStage): HarnessFactoryState {
+  return {
+    ...state,
+    stage,
+    updatedAt: new Date().toISOString()
+  };
 }
 
-export function withFactoryStateUpdate(state: HarnessFactoryState, patch: Partial<Omit<HarnessFactoryState, 'schemaVersion' | 'sessionId' | 'createdAt'>>, now = new Date().toISOString()): HarnessFactoryState {
-  return validateHarnessFactoryState({ ...state, ...patch, updatedAt: now });
+export function withHarnessFactoryDraft(state: HarnessFactoryState, draft: HarnessFactoryDraftSpec | CreateHarnessFactoryDraftInput): HarnessFactoryState {
+  const normalizedDraft = normalizeDraft(draft);
+  if (!normalizedDraft) return state;
+  return {
+    ...state,
+    stage: 'drafting',
+    targetRuntime: normalizedDraft.targetRuntime,
+    requestedCapabilities: uniqueStrings([...state.requestedCapabilities, ...normalizedDraft.requestedCapabilities]),
+    confirmedDecisions: normalizeDecisions([...state.confirmedDecisions, ...normalizedDraft.confirmedDecisions]),
+    referencePatterns: normalizeReferencePatterns([...state.referencePatterns, ...normalizedDraft.referencePatterns]),
+    draftGraphSpec: normalizedDraft.graph,
+    draft: normalizedDraft,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+export function withConfirmedDecision(state: HarnessFactoryState, decision: HarnessFactoryDecision): HarnessFactoryState {
+  return {
+    ...state,
+    confirmedDecisions: normalizeDecisions([...state.confirmedDecisions, decision]),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+export function withResolvedQuestion(state: HarnessFactoryState, questionId: string): HarnessFactoryState {
+  const normalizedId = normalizeString(questionId).toLowerCase();
+  return {
+    ...state,
+    openQuestions: state.openQuestions.filter((question) => question.id.toLowerCase() !== normalizedId),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+export function isHarnessFactoryReadyForBuild(state: HarnessFactoryState): boolean {
+  return state.openQuestions.length === 0 && Boolean(state.draft) && (state.stage === 'drafting' || state.stage === 'built' || state.stage === 'previewing' || state.stage === 'verifying');
 }

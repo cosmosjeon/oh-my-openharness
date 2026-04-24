@@ -134,7 +134,7 @@ function normalizeReferencePatterns(patterns: HarnessFactoryReferencePattern[]):
 
 function normalizeDraft(draft?: HarnessFactoryDraftSpec | CreateHarnessFactoryDraftInput): HarnessFactoryDraftSpec | undefined {
   if (!draft) return undefined;
-  return 'graph' in draft && 'targetRuntime' in draft && 'requestedCapabilities' in draft ? draft : createHarnessFactoryDraft(draft);
+  return createHarnessFactoryDraft(draft);
 }
 
 export function createHarnessFactoryState(input: CreateHarnessFactoryStateInput): HarnessFactoryState {

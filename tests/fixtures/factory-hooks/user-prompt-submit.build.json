@@ -1,0 +1,9 @@
+{
+  "session_id": "prompt-build",
+  "hook_event_name": "UserPromptSubmit",
+  "cwd": "__CWD__",
+  "prompt": "go ahead and build it",
+  "factory": {
+    "stateRoot": "__TEMP__"
+  }
+}

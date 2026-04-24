@@ -1,0 +1,16 @@
+{
+  "session_id": "post-tool-project",
+  "hook_event_name": "PostToolUse",
+  "cwd": "__CWD__",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "bun run src/index.ts new factory-built-project"
+  },
+  "tool_response": {
+    "projectPath": "factory-built-project"
+  },
+  "tool_use_id": "toolu_factory_project",
+  "factory": {
+    "stateRoot": "__TEMP__"
+  }
+}

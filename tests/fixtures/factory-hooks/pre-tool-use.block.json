@@ -1,0 +1,14 @@
+{
+  "session_id": "pre-tool-block",
+  "hook_event_name": "PreToolUse",
+  "cwd": "__CWD__",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "factory-output/manifest.yaml",
+    "content": "name: unsafe"
+  },
+  "tool_use_id": "toolu_factory_block",
+  "factory": {
+    "stateRoot": "__TEMP__"
+  }
+}

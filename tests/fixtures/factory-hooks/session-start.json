@@ -1,0 +1,9 @@
+{
+  "session_id": "session-start",
+  "hook_event_name": "SessionStart",
+  "cwd": "__CWD__",
+  "factory": {
+    "stateRoot": "__TEMP__"
+  },
+  "source": "startup"
+}

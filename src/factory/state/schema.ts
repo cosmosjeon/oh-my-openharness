@@ -3,6 +3,8 @@ import type { GraphEdge, GraphNode, RuntimeIntent, RuntimeTarget, SkillFile } fr
 export type HarnessFactoryStage = 'intake' | 'interview' | 'drafting' | 'built' | 'previewing' | 'verifying';
 export type HarnessFactoryDecisionSource = 'user' | 'reference' | 'derived';
 export type HarnessFactoryVerificationStatus = 'not-run' | 'running' | 'passed' | 'failed';
+export type HarnessFactoryActionName = 'draft' | 'build' | 'preview' | 'verify' | 'export';
+export type HarnessFactoryActionStatus = 'idle' | 'running' | 'passed' | 'failed';
 
 export interface HarnessFactoryDecision {
   key: string;
@@ -38,6 +40,8 @@ export interface HarnessFactoryPreviewStatus {
   url?: string;
   lastOpenedAt?: string;
   status?: 'not-opened' | 'open' | 'closed' | 'error';
+  apiToken?: string;
+  mutationProtection?: 'token+same-origin';
   error?: string;
 }
 
@@ -48,6 +52,42 @@ export interface HarnessFactoryVerification {
   summary?: string;
   traceFile?: string;
   error?: string;
+}
+
+export interface HarnessFactoryExportStatus {
+  runtime?: RuntimeTarget;
+  outDir?: string;
+  runtimeBundleRoot?: string;
+  runtimeBundleManifestPath?: string;
+  exportManifestPath?: string;
+  exportedAt?: string;
+}
+
+export interface HarnessFactoryActionRecord {
+  action: HarnessFactoryActionName;
+  status: HarnessFactoryActionStatus;
+  startedAt: string;
+  completedAt?: string;
+  message?: string;
+  projectPath?: string;
+  graphHash?: string;
+  output?: Record<string, unknown>;
+}
+
+export interface HarnessFactoryActionFailure {
+  action: HarnessFactoryActionName;
+  message: string;
+  category: string;
+  timestamp: string;
+  stack?: string;
+  projectPath?: string;
+  graphHash?: string;
+}
+
+export interface HarnessFactoryActionState {
+  lastAction?: HarnessFactoryActionRecord;
+  lastFailure?: HarnessFactoryActionFailure;
+  history: HarnessFactoryActionRecord[];
 }
 
 export interface HarnessFactoryState {
@@ -64,6 +104,8 @@ export interface HarnessFactoryState {
   projectPath?: string;
   preview: HarnessFactoryPreviewStatus;
   verification: HarnessFactoryVerification;
+  exportResult?: HarnessFactoryExportStatus;
+  actions: HarnessFactoryActionState;
   createdAt: string;
   updatedAt: string;
 }
@@ -134,6 +176,7 @@ export function createHarnessFactoryState(input: CreateHarnessFactoryStateInput)
     ...(input.projectPath ? { projectPath: input.projectPath } : {}),
     preview: { status: 'not-opened' },
     verification: { status: 'not-run' },
+    actions: { history: [] },
     createdAt: now,
     updatedAt: now
   });
@@ -156,12 +199,25 @@ export function validateHarnessFactoryState(value: unknown): HarnessFactoryState
   assert(Array.isArray(draft.runtimeIntents), 'HarnessFactoryState.draftGraphSpec.runtimeIntents must be an array.');
   assert(Array.isArray(draft.skills), 'HarnessFactoryState.draftGraphSpec.skills must be an array.');
   if (state.projectPath !== undefined) assertString(state.projectPath, 'HarnessFactoryState.projectPath');
-  assertRecord(state.preview, 'HarnessFactoryState.preview');
-  assertRecord(state.verification, 'HarnessFactoryState.verification');
+  const preview = assertRecord(state.preview ?? { status: 'not-opened' }, 'HarnessFactoryState.preview');
+  const verification = assertRecord(state.verification ?? { status: 'not-run' }, 'HarnessFactoryState.verification');
+  const actions = assertRecord(state.actions ?? { history: [] }, 'HarnessFactoryState.actions');
+  assert(Array.isArray(actions.history), 'HarnessFactoryState.actions.history must be an array.');
+  if (state.exportResult !== undefined) assertRecord(state.exportResult, 'HarnessFactoryState.exportResult');
   assertString(state.createdAt, 'HarnessFactoryState.createdAt');
   assertString(state.updatedAt, 'HarnessFactoryState.updatedAt');
-  return state as unknown as HarnessFactoryState;
+  return {
+    ...state,
+    preview,
+    verification,
+    actions: {
+      ...(actions.lastAction ? { lastAction: actions.lastAction } : {}),
+      ...(actions.lastFailure ? { lastFailure: actions.lastFailure } : {}),
+      history: actions.history
+    }
+  } as unknown as HarnessFactoryState;
 }
+
 
 export function withFactoryStateUpdate(state: HarnessFactoryState, patch: Partial<Omit<HarnessFactoryState, 'schemaVersion' | 'sessionId' | 'createdAt'>>, now = new Date().toISOString()): HarnessFactoryState {
   return validateHarnessFactoryState({ ...state, ...patch, updatedAt: now });

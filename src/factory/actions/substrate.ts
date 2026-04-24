@@ -77,7 +77,6 @@ export async function materializeCanonicalProject(request: FactoryMaterializeReq
   return { projectDir, project };
 }
 
-
 export async function materializeFactoryDraft(request: FactoryDraftMaterializeRequest): Promise<FactoryMaterializeResult> {
   const projectDir = resolve(request.dir, request.name);
   let project = projectFromFactoryState(request.state, { name: request.name, targetRuntime: request.state.targetRuntime });
@@ -113,8 +112,21 @@ export async function exportCanonicalProject(projectDir: string, outDir?: string
   return exportProjectBundle(resolvedProjectDir, project, resolvedOutDir);
 }
 
-export async function verifyCanonicalProject(projectDir: string, outDir?: string): Promise<SandboxRunResult> {
-  return validateProject(resolve(projectDir), outDir ? { outDir: resolve(outDir) } : {});
+export interface FactoryVerifyOptions {
+  outDir?: string;
+  failHook?: string;
+}
+
+function resolveVerifyOptions(options: string | FactoryVerifyOptions): FactoryVerifyOptions {
+  if (typeof options === 'string') return { outDir: resolve(options) };
+  return {
+    ...(options.outDir ? { outDir: resolve(options.outDir) } : {}),
+    ...(options.failHook ? { failHook: options.failHook } : {})
+  };
+}
+
+export async function verifyCanonicalProject(projectDir: string, options: string | FactoryVerifyOptions = {}): Promise<SandboxRunResult> {
+  return validateProject(resolve(projectDir), resolveVerifyOptions(options));
 }
 
 export async function openCanonicalProjectPreview(request: FactoryPreviewRequest): Promise<FactoryPreviewResult> {

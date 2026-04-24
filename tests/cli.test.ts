@@ -302,14 +302,14 @@ describe('CLI entrypoint', () => {
     expect(doctorPayload.runtimes[0]?.hostReadiness.details[0]).toContain('Verify host readiness separately');
   });
 
-  test('author applies host-authored graph deltas and preserves configured runtime roots across setup for each runtime', async () => {
-    const cases = [
-      { runtime: 'claude', targetRuntime: 'claude-code', binary: 'claude', envVar: 'CLAUDE_CONFIG_DIR', rootDirName: 'claude-root' },
-      { runtime: 'opencode', targetRuntime: 'opencode', binary: 'opencode', envVar: 'OPENCODE_CONFIG_DIR', rootDirName: 'opencode-root' },
-      { runtime: 'codex', targetRuntime: 'codex', binary: 'codex', envVar: 'CODEX_HOME', rootDirName: 'codex-root' }
-    ] as const;
+  const authorRuntimeCases = [
+    { runtime: 'claude', targetRuntime: 'claude-code', binary: 'claude', envVar: 'CLAUDE_CONFIG_DIR', rootDirName: 'claude-root' },
+    { runtime: 'opencode', targetRuntime: 'opencode', binary: 'opencode', envVar: 'OPENCODE_CONFIG_DIR', rootDirName: 'opencode-root' },
+    { runtime: 'codex', targetRuntime: 'codex', binary: 'codex', envVar: 'CODEX_HOME', rootDirName: 'codex-root' }
+  ] as const;
 
-    for (const testCase of cases) {
+  for (const testCase of authorRuntimeCases) {
+    test(`author applies host-authored graph deltas and preserves configured runtime roots for ${testCase.runtime}`, async () => {
       const root = await mkdtemp(join(tmpdir(), `omoh-cli-author-${testCase.runtime}-`));
       const binDir = join(root, 'bin');
       const configRoot = join(root, testCase.rootDirName);
@@ -354,6 +354,6 @@ describe('CLI entrypoint', () => {
       expect(edges.some((edge) => edge.id === `${testCase.runtime}-guard-edge`)).toBe(true);
       expect(authoring.summary).toBe(`${testCase.runtime} host-authored summary`);
       expect(authoring.warnings).toContain(`${testCase.runtime} host warning`);
-    }
-  });
+    });
+  }
 });

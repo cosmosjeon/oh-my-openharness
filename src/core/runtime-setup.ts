@@ -2,6 +2,12 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import {
+  CLAUDE_HARNESS_MAKER_KIND,
+  CLAUDE_HARNESS_MAKER_PACKAGE_NAME,
+  claudeHarnessMakerInstallSurface,
+  writeClaudeHarnessMakerPackage
+} from '../factory/package';
 import type {
   RuntimeCapabilityMatrixEntry,
   RuntimeDoctorEntry,
@@ -15,7 +21,6 @@ import type {
 } from './types';
 
 const PRODUCT_NAME = 'oh-my-openharness';
-const CLAUDE_SKILL_DIR = join('skills', 'oh-my-openharness');
 const RUNTIME_SKILL_NAME = 'oh-my-openharness';
 const RUNTIME_ORDER: SetupRuntime[] = ['claude', 'opencode', 'codex'];
 
@@ -27,6 +32,8 @@ interface RuntimeDescriptor {
   configEnvVar: string;
   configRoot: string;
   installRoot: string;
+  packageName?: string;
+  packageKind?: string;
   installSurface: string[];
   mutationSurface: string[];
   approvalSemantics: string;
@@ -71,6 +78,7 @@ function runtimeDescriptor(runtime: SetupRuntime): RuntimeDescriptor {
   const configRoot = defaultConfigRoot(runtime);
   if (runtime === 'claude') {
     const installRoot = join(configRoot, 'plugins', PRODUCT_NAME);
+    const installSurface = claudeHarnessMakerInstallSurface(installRoot);
     return {
       runtime,
       displayName: 'Claude',
@@ -79,20 +87,13 @@ function runtimeDescriptor(runtime: SetupRuntime): RuntimeDescriptor {
       configEnvVar: 'CLAUDE_CONFIG_DIR',
       configRoot,
       installRoot,
-      installSurface: [
-        join(installRoot, 'plugin.json'),
-        join(installRoot, 'hooks', 'hooks.json'),
-        join(installRoot, CLAUDE_SKILL_DIR, 'SKILL.md'),
-        join(installRoot, 'install.json')
-      ],
-      mutationSurface: [
-        `${configRoot}/plugins/${PRODUCT_NAME}`,
-        `${configRoot}/plugins/${PRODUCT_NAME}/hooks/hooks.json`,
-        `${configRoot}/plugins/${PRODUCT_NAME}/${CLAUDE_SKILL_DIR}/SKILL.md`
-      ],
-      approvalSemantics: 'One summary approval gate covers Claude plugin bundle writes.',
+      packageName: CLAUDE_HARNESS_MAKER_PACKAGE_NAME,
+      packageKind: CLAUDE_HARNESS_MAKER_KIND,
+      installSurface,
+      mutationSurface: [installRoot, ...installSurface],
+      approvalSemantics: 'One summary approval gate covers Claude harness-maker plugin package writes.',
       rollbackBehavior: [`Remove ${installRoot} to roll back the Claude setup surface.`],
-      proofMethod: 'Confirm the Claude plugin bundle exists, then run doctor to separate install shape from host readiness.',
+      proofMethod: 'Confirm the Claude harness-maker plugin package exists, then run doctor to separate install shape from host readiness.',
       provenanceType: 'extracted',
       evidenceFiles: [
         '.omx/plans/oh-my-openharness/REFERENCE/claude-runtime-baseline.md',
@@ -186,6 +187,8 @@ function toCapabilityEntry(descriptor: RuntimeDescriptor): RuntimeCapabilityMatr
     configEnvVar: descriptor.configEnvVar,
     configRoot: descriptor.configRoot,
     installRoot: descriptor.installRoot,
+    ...(descriptor.packageName ? { packageName: descriptor.packageName } : {}),
+    ...(descriptor.packageKind ? { packageKind: descriptor.packageKind } : {}),
     installSurface: [...descriptor.installSurface],
     mutationSurface: [...descriptor.mutationSurface],
     approvalSemantics: descriptor.approvalSemantics,
@@ -201,11 +204,14 @@ function plannedWrites(entry: RuntimeCapabilityMatrixEntry): SetupChange[] {
   if (entry.installStatus === 'configured' || entry.installStatus === 'scaffolded' || entry.installStatus === 'missing-binary') return [];
   if (entry.runtime === 'claude') {
     return [
-      { runtime: entry.runtime, path: entry.installRoot, kind: 'mkdir', risk: 'risky', reason: 'Create the Claude plugin root for OMOH.' },
-      { runtime: entry.runtime, path: join(entry.installRoot, 'hooks', 'hooks.json'), kind: 'write', risk: 'risky', reason: 'Write the OMOH Claude hook manifest.' },
-      { runtime: entry.runtime, path: join(entry.installRoot, 'plugin.json'), kind: 'write', risk: 'risky', reason: 'Write the OMOH Claude plugin manifest.' },
-      { runtime: entry.runtime, path: join(entry.installRoot, CLAUDE_SKILL_DIR, 'SKILL.md'), kind: 'write', risk: 'risky', reason: 'Install the OMOH Claude setup skill.' },
-      { runtime: entry.runtime, path: join(entry.installRoot, 'install.json'), kind: 'write', risk: 'risky', reason: 'Persist the OMOH Claude install snapshot.' }
+      { runtime: entry.runtime, path: entry.installRoot, kind: 'mkdir', risk: 'risky', reason: 'Create the Claude harness-maker plugin root for OMOH.' },
+      ...entry.installSurface.map((path) => ({
+        runtime: entry.runtime,
+        path,
+        kind: 'write' as const,
+        risk: 'risky' as const,
+        reason: 'Write the Claude-native harness-maker package surface.'
+      }))
     ];
   }
   if (entry.runtime === 'opencode') {
@@ -270,10 +276,6 @@ function ensureSupportedForApply(plan: RuntimeSetupPlan) {
   if (missing.length > 0) throw new Error(`Missing runtime prerequisite(s): ${missing.join(', ')}`);
 }
 
-function claudeSkillContent(selectedRuntimes: SetupRuntime[], configRoot: string): string {
-  return `---\nname: oh-my-openharness\ndescription: OMOH Claude setup bridge\n---\n\n# oh-my-openharness\n\nThis Claude runtime was configured by OMOH.\n\n## Selected runtimes\n- ${selectedRuntimes.join(', ')}\n\n## Config root\n- ${configRoot}\n\n## Contract\n- Real authoring remains inside Claude Code.\n- OMOH owns setup, orchestration, browser editing, export, and validation around the canonical project.\n- Host CLI readiness still depends on a valid Claude installation and authentication state.\n`;
-}
-
 function opencodeSkillContent(selectedRuntimes: SetupRuntime[], configRoot: string): string {
   return `---\nname: ${PRODUCT_NAME}\ndescription: OMOH OpenCode authoring bridge\n---\n\n# ${PRODUCT_NAME}\n\nThis OpenCode runtime was configured by OMOH for host-native authoring.\n\n## Selected runtimes\n- ${selectedRuntimes.join(', ')}\n\n## Config root\n- ${configRoot}\n\n## Contract\n- Real authoring happens inside OpenCode.\n- Choose the runtime target before writing runtime-specific artifacts.\n- Export and validation stay anchored to the canonical OMOH project on disk.\n`;
 }
@@ -283,52 +285,16 @@ function codexSkillContent(selectedRuntimes: SetupRuntime[], configRoot: string)
 }
 
 async function writeClaudeBundle(entry: RuntimeCapabilityMatrixEntry, selectedRuntimes: SetupRuntime[], version: string) {
-  await mkdir(join(entry.installRoot, 'hooks'), { recursive: true });
-  await mkdir(join(entry.installRoot, CLAUDE_SKILL_DIR), { recursive: true });
-  await writeFile(
-    join(entry.installRoot, 'plugin.json'),
-    JSON.stringify(
-      {
-        name: PRODUCT_NAME,
-        version,
-        description: 'OMOH Claude setup bridge',
-        hooks: './hooks/hooks.json',
-        skills: './skills'
-      },
-      null,
-      2
-    )
-  );
-  await writeFile(
-    join(entry.installRoot, 'hooks', 'hooks.json'),
-    JSON.stringify(
-      {
-        description: 'OMOH Claude setup bridge',
-        hooks: {}
-      },
-      null,
-      2
-    )
-  );
-  await writeFile(join(entry.installRoot, CLAUDE_SKILL_DIR, 'SKILL.md'), claudeSkillContent(selectedRuntimes, entry.configRoot));
-  await writeFile(
-    join(entry.installRoot, 'install.json'),
-    JSON.stringify(
-      {
-        product: PRODUCT_NAME,
-        runtime: entry.runtime,
-        supportLevel: entry.supportLevel,
-        selectedRuntimes,
-        installedAt: new Date().toISOString(),
-        configRoot: entry.configRoot,
-        installRoot: entry.installRoot,
-        provenanceType: entry.provenanceType,
-        evidenceFiles: entry.evidenceFiles
-      },
-      null,
-      2
-    )
-  );
+  await writeClaudeHarnessMakerPackage({
+    packageRoot: entry.installRoot,
+    version,
+    productName: PRODUCT_NAME,
+    configRoot: entry.configRoot,
+    installRoot: entry.installRoot,
+    selectedRuntimes,
+    runtimeCommand: 'bun',
+    runtimeArgs: ['run', join(import.meta.dir, '..', 'factory', 'hooks', 'cli.ts')]
+  });
 }
 
 async function writeSetupSnapshot(entry: RuntimeCapabilityMatrixEntry, selectedRuntimes: SetupRuntime[], version: string) {
@@ -507,6 +473,8 @@ export function buildDoctorReport(selectedRuntimes: SetupRuntime[]): RuntimeDoct
       ...(capability.binaryPath ? { binaryPath: capability.binaryPath } : {}),
       configRoot: descriptor.configRoot,
       installRoot: descriptor.installRoot,
+      ...(descriptor.packageName ? { packageName: descriptor.packageName } : {}),
+      ...(descriptor.packageKind ? { packageKind: descriptor.packageKind } : {}),
       installShape: installShapeCheck(capability),
       hostReadiness: hostReadinessCheck(capability, descriptor),
       suggestedNextCommand: descriptor.suggestedNextCommand

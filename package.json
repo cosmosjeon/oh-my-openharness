@@ -6,12 +6,14 @@
   "license": "MIT",
   "files": [
     "bin/oh-my-openharness",
+    "bin/harness-editor",
     "src",
     "README.md",
     "tsconfig.json"
   ],
   "bin": {
-    "oh-my-openharness": "bin/oh-my-openharness"
+    "oh-my-openharness": "bin/oh-my-openharness",
+    "harness-editor": "bin/harness-editor"
   },
   "scripts": {
     "dev": "bun run src/index.ts",

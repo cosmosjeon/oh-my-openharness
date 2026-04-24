@@ -223,6 +223,8 @@ export interface RuntimeCapabilityMatrixEntry {
   configEnvVar: string;
   configRoot: string;
   installRoot: string;
+  packageName?: string;
+  packageKind?: string;
   installSurface: string[];
   mutationSurface: string[];
   approvalSemantics: string;
@@ -267,6 +269,8 @@ export interface RuntimeDoctorEntry {
   binaryPath?: string;
   configRoot: string;
   installRoot: string;
+  packageName?: string;
+  packageKind?: string;
   installShape: RuntimeDoctorCheck;
   hostReadiness: RuntimeDoctorCheck;
   suggestedNextCommand: string;

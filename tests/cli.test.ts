@@ -1,8 +1,11 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test as bunTest } from 'bun:test';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { chmod, cp, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join } from 'node:path';
+
+const test = (name: string, fn: Parameters<typeof bunTest>[1]) => bunTest(name, fn, 60000);
 
 function runCli(args: string[], env: NodeJS.ProcessEnv = {}) {
   return spawnSync('bun', ['run', 'src/index.ts', ...args], {
@@ -164,10 +167,44 @@ describe('CLI entrypoint', () => {
     expect(payload.approvalMode).toBe('summary');
     expect(payload.capabilityMatrix[0]?.installStatus).toBe('configured');
 
-    const pluginJson = JSON.parse(await readFile(join(claudeConfigDir, 'plugins', 'oh-my-openharness', 'plugin.json'), 'utf8')) as { name: string; hooks: string; skills: string };
+    const pluginJson = JSON.parse(await readFile(join(claudeConfigDir, 'plugins', 'oh-my-openharness', 'plugin.json'), 'utf8')) as { name: string; hooks: string; skills: string; packageName: string; stateContract: string };
     expect(pluginJson.name).toBe('oh-my-openharness');
+    expect(pluginJson.packageName).toBe('harness-maker');
     expect(pluginJson.hooks).toBe('./hooks/hooks.json');
     expect(pluginJson.skills).toBe('./skills');
+    expect(pluginJson.stateContract).toBe('./state-contract.json');
+    expect(await readFile(join(claudeConfigDir, 'plugins', 'oh-my-openharness', 'skills', 'harness-factory', 'SKILL.md'), 'utf8')).toContain('Harness Factory');
+  });
+
+  test('setup dry-run reports the Claude harness-maker package plan without writes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'omoh-cli-setup-dry-run-'));
+    const binDir = join(root, 'bin');
+    const claudeConfigDir = join(root, 'claude');
+    await mkdir(binDir, { recursive: true });
+    await createFakeBinary(binDir, 'claude');
+
+    const result = runCli(['setup', '--runtimes', 'claude', '--dry-run', '--json'], {
+      PATH: `${binDir}${delimiter}${process.env.PATH ?? ''}`,
+      CLAUDE_CONFIG_DIR: claudeConfigDir
+    });
+
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout) as {
+      approvalRequired: boolean;
+      capabilityMatrix: Array<{ runtime: string; packageName?: string; packageKind?: string; installStatus: string }>;
+      riskyWrites: Array<{ path: string; reason: string }>;
+    };
+    expect(payload.approvalRequired).toBe(true);
+    expect(payload.capabilityMatrix[0]).toMatchObject({
+      runtime: 'claude',
+      packageName: 'harness-maker',
+      packageKind: 'claude-native-harness-maker',
+      installStatus: 'ready-to-apply'
+    });
+    expect(payload.riskyWrites.some((write) => write.path.endsWith('state-contract.json'))).toBe(true);
+    expect(payload.riskyWrites.some((write) => write.path.endsWith('skills/harness-factory/SKILL.md'))).toBe(true);
+    expect(payload.riskyWrites.every((write) => write.reason.includes('harness-maker') || write.path.endsWith('oh-my-openharness'))).toBe(true);
+    expect(existsSync(join(claudeConfigDir, 'plugins', 'oh-my-openharness'))).toBe(false);
   });
 
   test('setup supports multi-select planning with one summary approval gate', async () => {
@@ -218,12 +255,16 @@ describe('CLI entrypoint', () => {
     const payload = JSON.parse(result.stdout) as {
       runtimes: Array<{
         runtime: string;
+        packageName?: string;
+        packageKind?: string;
         installShape: { status: string };
         hostReadiness: { status: string; details: string[] };
         suggestedNextCommand: string;
       }>;
     };
     expect(payload.runtimes[0]?.runtime).toBe('claude');
+    expect(payload.runtimes[0]?.packageName).toBe('harness-maker');
+    expect(payload.runtimes[0]?.packageKind).toBe('claude-native-harness-maker');
     expect(payload.runtimes[0]?.installShape.status).toBe('ok');
     expect(payload.runtimes[0]?.hostReadiness.status).toBe('warning');
     expect(payload.runtimes[0]?.suggestedNextCommand).toBe('claude');

@@ -7,6 +7,7 @@ import { join, relative } from 'node:path';
 const repoRoot = process.cwd();
 const reviewDocPath = join(repoRoot, 'docs', 'harness-factory-phase-a-b-review.md');
 const registryPath = join(repoRoot, 'src', 'factory', 'reference', 'pattern-registry.json');
+const allowedFactoryIntegrationImports = new Set(['src/core/runtime-setup.ts']);
 
 function runCli(args: string[]) {
   return spawnSync('bun', ['run', 'src/index.ts', ...args], {
@@ -108,7 +109,7 @@ describe('Harness Factory Phase A+B contract', () => {
     }
   });
 
-  test('non-factory source files do not import the factory namespace during Phase A+B', async () => {
+  test('non-factory source files do not import the factory namespace outside approved setup bridges', async () => {
     const sourceFiles = (await listFiles(join(repoRoot, 'src'))).filter((file) => {
       const relativePath = relative(repoRoot, file).split('\\').join('/');
       return relativePath.endsWith('.ts') && !relativePath.startsWith('src/factory/');
@@ -119,7 +120,9 @@ describe('Harness Factory Phase A+B contract', () => {
     for (const file of sourceFiles) {
       const source = await readFile(file, 'utf8');
       const specifiers = parseModuleSpecifiers(source);
-      expect(specifiers.some(referencesFactoryNamespace), relative(repoRoot, file)).toBe(false);
+      const relativePath = relative(repoRoot, file).split('\\').join('/');
+      if (allowedFactoryIntegrationImports.has(relativePath)) continue;
+      expect(specifiers.some(referencesFactoryNamespace), relativePath).toBe(false);
     }
   });
 

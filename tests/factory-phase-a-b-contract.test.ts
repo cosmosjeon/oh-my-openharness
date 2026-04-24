@@ -73,9 +73,6 @@ function toStringArray(value: unknown): string[] {
 function hasSourceRepo(entry: Record<string, unknown>) {
   if (typeof entry.sourceRepo === 'string' && entry.sourceRepo.length > 0) return true;
 
-  const sourceRepos = entry.sourceRepos;
-  if (Array.isArray(sourceRepos) && sourceRepos.some((source) => isRecord(source) && typeof source.repo === 'string' && source.repo.length > 0)) return true;
-
   const source = entry.source;
   if (isRecord(source) && typeof source.repo === 'string' && source.repo.length > 0) return true;
 

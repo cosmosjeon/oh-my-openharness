@@ -1,5 +1,6 @@
 import type { LayoutNode } from '../../core/types';
 import type { CatalogPayload, FactoryChatPayload, FactoryStatePayload, ProjectPayload, SkillUpdatePayload } from './types';
+import type { TracePayload } from './trace';
 
 async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -23,6 +24,10 @@ export function fetchCatalog(): Promise<CatalogPayload> {
 
 export function fetchFactoryState(sessionId = 'default'): Promise<FactoryStatePayload> {
   return jsonRequest<FactoryStatePayload>(`/api/factory/state?sessionId=${encodeURIComponent(sessionId)}`);
+}
+
+export function fetchTrace(): Promise<TracePayload> {
+  return jsonRequest<TracePayload>('/api/trace');
 }
 
 export function postFactoryChat(apiToken: string, text: string, sessionId = 'default'): Promise<FactoryChatPayload> {
@@ -54,5 +59,13 @@ export function updateSkill(apiToken: string, payload: SkillUpdatePayload) {
     method: 'POST',
     headers: mutationHeaders(apiToken),
     body: JSON.stringify(payload)
+  });
+}
+
+export function rerunSandbox(apiToken: string) {
+  return jsonRequest<{ ok: boolean; mode: string; hotReload: boolean; message: string; trace: TracePayload }>('/api/sandbox/rerun', {
+    method: 'POST',
+    headers: mutationHeaders(apiToken),
+    body: JSON.stringify({})
   });
 }

@@ -146,6 +146,25 @@ describe('oh-my-openharness local server', () => {
     expect(typeof payload.expectedGraphHash).toBe('string');
   });
 
+  test('localizes trace failures for debugger panels', async () => {
+    const tracePath = join(fixture!.projectDir, 'trace.jsonl');
+    const project = await fetchJson(`${handle!.url}/api/project`);
+    const firstNode = (project.body as { nodes: Array<{ id: string }>; manifest: { graphHash: string } }).nodes[0]!;
+    const graphHash = (project.body as { manifest: { graphHash: string } }).manifest.graphHash;
+    await writeFile(
+      tracePath,
+      JSON.stringify({ timestamp: new Date().toISOString(), eventType: 'failure', hook: 'UserPromptSubmit', nodeId: firstNode.id, status: 'error', message: 'localized failure', metadata: { graphHash, runtime: 'claude-code', details: '<unsafe>' } })
+    );
+
+    const { status, body } = await fetchJson(`${handle!.url}/api/trace`);
+    expect(status).toBe(200);
+    const payload = body as { failure: { hook: string; nodeId: string; message: string; likelyAction: string } };
+    expect(payload.failure.nodeId).toBe(firstNode.id);
+    expect(payload.failure.hook).toBe('UserPromptSubmit');
+    expect(payload.failure.message).toBe('localized failure');
+    expect(payload.failure.likelyAction).toContain('rerun sandbox verification');
+  });
+
   test('persists layout updates without mutating other files', async () => {
     const { body } = await fetchJson(`${handle!.url}/api/project`);
     const payload = body as { nodes: Array<{ id: string }>; layout: Array<{ id: string; x: number; y: number }> };

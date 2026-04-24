@@ -45,4 +45,34 @@ describe('validateProject', () => {
     expect(reportHtml).toContain('Error events');
     expect(reportHtml).toContain('Hook command failed');
   });
+
+  test('localizes forced hook failure to a canonical graph node', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-project-'));
+    const projectDir = join(root, 'demo-localized-fail');
+    const project = applyRiskConfirmations(generateHarnessProject('demo-localized-fail', 'Create a harness with approval and review loop'), true);
+    await writeHarnessProject(projectDir, project);
+
+    const result = await validateProject(projectDir, { failHook: 'UserPromptSubmit' });
+    const nodeIds = new Set(project.nodes.map((node) => node.id));
+    const failure = [...result.events].reverse().find((event) => event.status === 'error' && nodeIds.has(event.nodeId));
+
+    expect(result.success).toBe(false);
+    expect(failure?.hook).toBe('UserPromptSubmit');
+    expect(failure?.eventType).toBe('failure');
+    expect(nodeIds.has(failure!.nodeId)).toBe(true);
+  });
+
+  test('maps MCP server trace event to the canonical MCP node', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'oh-my-openharness-project-'));
+    const projectDir = join(root, 'demo-mcp');
+    const project = applyRiskConfirmations(generateHarnessProject('demo-mcp', 'Create a harness with mcp server and review loop'), true);
+    await writeHarnessProject(projectDir, project);
+
+    const result = await validateProject(projectDir);
+    const mcpNode = project.nodes.find((node) => node.kind === 'MCPServer')!;
+    const mcpEvent = result.events.find((event) => event.eventType === 'mcp-server');
+
+    expect(result.success).toBe(true);
+    expect(mcpEvent?.nodeId).toBe(mcpNode.id);
+  });
 });

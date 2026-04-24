@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Background, Controls, MiniMap, ReactFlow, applyNodeChanges, type NodeChange } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { fetchCatalog, fetchFactoryState, fetchProject, postFactoryChat, saveLayout, updateNode, updateSkill } from './api';
+import { fetchCatalog, fetchFactoryState, fetchProject, fetchTrace, postFactoryChat, rerunSandbox, saveLayout, updateNode, updateSkill } from './api';
 import { catalogFromProject, serializeFlowLayout, skillForFlowNode, toReactFlowEdges, toReactFlowNodes } from './graph';
 import type { CatalogPayload, FactoryStatePayload, HarnessFlowNode, ProjectPayload } from './types';
+import { EMPTY_TRACE_STATE, reduceTracePayload, type TracePayload } from './trace';
+import { startTracePollingFallback } from './trace-stream';
 import './styles.css';
 
 function runtimeBadges(node: HarnessFlowNode) {
@@ -20,9 +22,27 @@ export function App() {
   const [chatText, setChatText] = useState('');
   const [chatResult, setChatResult] = useState<string>('');
   const [skillDraft, setSkillDraft] = useState('');
+  const [tracePayload, setTracePayload] = useState<TracePayload | null>(null);
   const [status, setStatus] = useState('Loading project…');
 
-  const edges = useMemo(() => (project ? toReactFlowEdges(project) : []), [project]);
+  const traceState = useMemo(() => (project ? reduceTracePayload(project, tracePayload) : EMPTY_TRACE_STATE), [project, tracePayload]);
+  const edges = useMemo(() => {
+    if (!project) return [];
+    const highlighted = new Set(traceState.highlightedEdgeIds);
+    return toReactFlowEdges(project).map((edge) => ({
+      ...edge,
+      animated: highlighted.has(edge.id),
+      className: highlighted.has(edge.id) ? 'trace-edge-active' : edge.className
+    }));
+  }, [project, traceState.highlightedEdgeIds]);
+  const visibleNodes = useMemo(() => {
+    const active = new Set(traceState.activeNodeIds);
+    const failed = new Set(traceState.failedNodeIds);
+    return nodes.map((node) => ({
+      ...node,
+      className: failed.has(node.id) ? 'trace-node-failed' : active.has(node.id) ? 'trace-node-active' : node.className
+    }));
+  }, [nodes, traceState.activeNodeIds, traceState.failedNodeIds]);
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
   const selectedSkill = project ? skillForFlowNode(project, selectedNode) : null;
 
@@ -32,6 +52,7 @@ export function App() {
     setNodes(toReactFlowNodes(nextProject));
     setCatalog(await fetchCatalog().catch(() => catalogFromProject(nextProject)));
     setFactory(await fetchFactoryState().catch((error) => ({ configured: false, stateRoot: '', sessionId: 'default', error: error.message })));
+    setTracePayload(await fetchTrace().catch(() => null));
     setStatus(`Loaded ${nextProject.manifest.name}`);
   }, []);
 
@@ -42,6 +63,26 @@ export function App() {
   useEffect(() => {
     setSkillDraft(selectedSkill?.content ?? '');
   }, [selectedSkill?.content]);
+
+  useEffect(() => {
+    if (!project) return;
+    const source = new EventSource('/api/trace/stream');
+    let stopPolling: (() => void) | null = null;
+    source.addEventListener('trace', (event) => {
+      setTracePayload(JSON.parse((event as MessageEvent<string>).data) as TracePayload);
+    });
+    source.onerror = () => {
+      source.close();
+      stopPolling ??= startTracePollingFallback({
+        onTrace: setTracePayload,
+        onError: (error) => setStatus(`Trace polling fallback failed: ${error.message}`)
+      });
+    };
+    return () => {
+      source.close();
+      stopPolling?.();
+    };
+  }, [project?.manifest.graphHash]);
 
   const onNodesChange = useCallback((changes: NodeChange<HarnessFlowNode>[]) => {
     setNodes((current) => applyNodeChanges(changes, current));
@@ -74,6 +115,12 @@ export function App() {
     setChatResult(JSON.stringify(result, null, 2));
   }
 
+  async function onRerunSandbox() {
+    const result = await rerunSandbox(apiToken);
+    setTracePayload(result.trace);
+    setStatus(result.message);
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -94,7 +141,7 @@ export function App() {
         </aside>
 
         <section className="canvas-card" aria-label="React Flow canvas">
-          <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onNodeClick={(_, node) => setSelectedId(node.id)} fitView>
+          <ReactFlow nodes={visibleNodes} edges={edges} onNodesChange={onNodesChange} onNodeClick={(_, node) => setSelectedId(node.id)} fitView>
             <MiniMap />
             <Controls />
             <Background />
@@ -129,6 +176,23 @@ export function App() {
           <p>Confirmed decisions: {factory?.state?.confirmedDecisions.length ?? 0}</p>
           <p>Project: {factory?.state?.projectPath ?? 'none'}</p>
           <p>Verification: {factory?.state?.verification.status ?? 'not-run'}</p>
+        </article>
+        <article className="panel trace-panel">
+          <h2>Live debugger</h2>
+          <p>Source: {tracePayload?.source ?? 'none'} · Events: {traceState.events.length}</p>
+          {traceState.staleTrace ? <p className="warning">Trace graph hash is stale. Run a bounded rerun to refresh overlays.</p> : null}
+          <button onClick={onRerunSandbox} disabled={!apiToken}>Rerun sandbox</button>
+          {traceState.latestFailure ? <div className="failure-card">
+            <strong>Failure: {traceState.latestFailure.hook} · {traceState.latestFailure.nodeId}</strong>
+            <p>{traceState.latestFailure.message}</p>
+            <p>{traceState.latestFailure.likelyAction}</p>
+          </div> : <p>No localized failures.</p>}
+          <ul className="trace-list">
+            {traceState.events.slice(-6).map((event, index) => <li key={`${event.timestamp}-${event.nodeId}-${index}`} className={event.status === 'error' ? 'trace-error' : 'trace-ok'}>
+              <strong>{event.eventType} · {event.nodeId}</strong>
+              <span>{event.hook}: {event.message}</span>
+            </li>)}
+          </ul>
         </article>
         <article className="panel chat-panel">
           <h2>Chat / interview</h2>

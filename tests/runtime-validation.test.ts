@@ -44,4 +44,12 @@ describe('runtime-backed trace validation helpers', () => {
     ]);
     expect(audit.violations.some((violation) => violation.includes('metadata.runtime'))).toBe(true);
   });
+
+  test('trace schema preserves debugger-required failure and MCP event types', () => {
+    const project = generateHarnessProject('trace-debugger-schema', 'Create a harness with mcp server and review loop');
+    const schema = traceSchema(project);
+
+    expect(schema.eventTypes).toContain('failure');
+    expect(schema.eventTypes).toContain('mcp-server');
+  });
 });

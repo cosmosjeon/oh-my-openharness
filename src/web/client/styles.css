@@ -18,6 +18,14 @@ ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
 li { display: grid; gap: 0.15rem; padding: 0.55rem; border: 1px solid #243044; border-radius: 10px; }
 li span, .panel p { color: #94a3b8; }
 .inspector-panel { display: grid; align-content: start; gap: 0.65rem; }
-.lower-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; }
+.lower-grid { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 1rem; }
 .chat-panel pre { white-space: pre-wrap; overflow: auto; max-height: 260px; background: #020617; border-radius: 8px; padding: 0.75rem; }
 .react-flow__node { color: #0f172a; }
+.react-flow__node.trace-node-active { box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.55); }
+.react-flow__node.trace-node-failed { box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.85); }
+.react-flow__edge.trace-edge-active path { stroke: #38bdf8; stroke-width: 3; }
+.warning { color: #fbbf24; }
+.failure-card { border: 1px solid #7f1d1d; border-radius: 10px; padding: 0.75rem; background: rgba(127, 29, 29, 0.35); }
+.trace-list { margin-top: 0.75rem; }
+.trace-ok { border-color: #14532d; }
+.trace-error { border-color: #7f1d1d; background: rgba(127, 29, 29, 0.25); }

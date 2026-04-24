@@ -10,6 +10,8 @@ import { createHarnessFactoryStore, type HarnessFactoryState } from '../factory/
 import { applyAnswer, queueNextQuestion } from '../factory/interview';
 import { routeFactoryPrompt } from '../factory/hooks/routing';
 import { orchestrateFactoryAction, type FactoryActionOrchestrationResult } from '../factory/actions';
+import { validateProject } from '../sandbox/validate';
+import { proveClaudeHostSandbox } from '../sandbox/claude-proof';
 import { renderViewerHtml } from './viewer';
 
 export interface ServerOptions {
@@ -27,6 +29,9 @@ export interface ServerHandle {
   port: number;
   host: string;
   apiToken: string;
+  debug: {
+    traceStreamClients(): number;
+  };
   close(): Promise<void>;
 }
 
@@ -43,7 +48,7 @@ interface ProjectPayload {
   runtimeIntents: HarnessProject['runtimeIntents'];
 }
 
-interface TracePayload {
+export interface TracePayload {
   source: 'trace-file' | 'sandbox-report' | 'none';
   path: string | null;
   events: TraceEvent[];
@@ -51,7 +56,24 @@ interface TracePayload {
   staleTrace?: boolean;
   expectedGraphHash?: string;
   observedGraphHash?: string | null;
+  failure?: TraceFailureDetails;
 }
+
+export interface TraceFailureDetails {
+  hook: string;
+  nodeId: string;
+  eventType: TraceEvent['eventType'];
+  message: string;
+  metadata?: Record<string, unknown>;
+  likelyAction: string;
+}
+
+interface TraceStreamTracker {
+  clients: Set<symbol>;
+  pollMs: number;
+}
+
+type ServerOptionsWithTracker = ServerOptions & { traceStreamTracker?: TraceStreamTracker };
 
 type EditorMutationBody =
   | { action: 'add-node'; kind: GraphNode['kind']; label: string; x?: number; y?: number }
@@ -86,20 +108,47 @@ async function readTraceFile(path: string): Promise<TraceEvent[]> {
 }
 
 function inferObservedGraphHash(events: TraceEvent[]): string | null {
-  for (const event of events) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]!;
     const graphHash = event.metadata && typeof event.metadata.graphHash === 'string' ? event.metadata.graphHash : null;
     if (graphHash) return graphHash;
   }
   return null;
 }
 
+function likelyActionForFailure(event: TraceEvent): string {
+  if (event.hook === 'MCPServer' || event.eventType === 'mcp-server') return 'Inspect the MCP server script and registration, then rerun sandbox verification.';
+  return `Inspect the ${event.hook} hook/runtime node, apply a bounded fix, then rerun sandbox verification.`;
+}
+
+function localizeFailure(project: HarnessProject, events: TraceEvent[]): TraceFailureDetails | undefined {
+  const nodeIds = new Set(project.nodes.map((node) => node.id));
+  const failure = [...events].reverse().find((event) => event.status === 'error' && nodeIds.has(event.nodeId))
+    ?? [...events].reverse().find((event) => event.status === 'error');
+  if (!failure) return undefined;
+  return {
+    hook: failure.hook,
+    nodeId: failure.nodeId,
+    eventType: failure.eventType,
+    message: failure.message,
+    ...(failure.metadata ? { metadata: failure.metadata } : {}),
+    likelyAction: likelyActionForFailure(failure)
+  };
+}
+
 export async function loadTracePayload(projectDir: string, explicitPath?: string, expectedGraphHash?: string, currentRuntime = 'claude-code'): Promise<TracePayload> {
+  let project: HarnessProject | undefined;
+  try {
+    project = await loadHarnessProject(projectDir);
+  } catch {
+    project = undefined;
+  }
   const compileDirName = describeRuntimeTarget(currentRuntime as Parameters<typeof describeRuntimeTarget>[0]).compileDirName;
   const candidates = [
     explicitPath,
-    join(projectDir, 'trace.jsonl'),
+    join(projectDir, 'sandbox', 'trace.jsonl'),
     join(projectDir, 'compiler', compileDirName, 'trace.jsonl'),
-    join(projectDir, 'sandbox', 'trace.jsonl')
+    join(projectDir, 'trace.jsonl')
   ].filter((value): value is string => Boolean(value));
 
   for (const candidate of candidates) {
@@ -110,6 +159,7 @@ export async function loadTracePayload(projectDir: string, explicitPath?: string
         source: 'trace-file',
         path: candidate,
         events,
+        ...(project ? { failure: localizeFailure(project, events) } : {}),
         ...(expectedGraphHash ? { expectedGraphHash, observedGraphHash, staleTrace: Boolean(observedGraphHash && observedGraphHash !== expectedGraphHash) } : {})
       };
     } catch (error) {
@@ -172,6 +222,12 @@ function isPathInside(parent: string, child: string): boolean {
   return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath));
 }
 
+function getTraceStreamTracker(options: ServerOptions): TraceStreamTracker {
+  const mutable = options as ServerOptionsWithTracker;
+  mutable.traceStreamTracker ??= { clients: new Set(), pollMs: 75 };
+  return mutable.traceStreamTracker;
+}
+
 async function sendStaticFile(res: ServerResponse, filePath: string): Promise<boolean> {
   try {
     const body = await readFile(filePath);
@@ -184,6 +240,11 @@ async function sendStaticFile(res: ServerResponse, filePath: string): Promise<bo
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
   }
+}
+
+function writeSseEvent(res: ServerResponse, event: string, data: unknown) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
 function sendNotFound(res: ServerResponse, message: string) {
@@ -482,6 +543,82 @@ async function handleFactoryChat(projectDir: string, url: URL, options: ServerOp
   return { ok: result.ok, route: route.route, reason: route.reason, state: result.state, result: serializable };
 }
 
+async function loadCurrentTracePayload(projectDir: string, options: ServerOptions): Promise<TracePayload> {
+  const project = await loadHarnessProject(projectDir);
+  return loadTracePayload(projectDir, options.tracePath, project.manifest.graphHash, project.manifest.targetRuntime);
+}
+
+function traceSignature(payload: TracePayload): string {
+  const lastEvent = payload.events.at(-1);
+  return JSON.stringify({
+    path: payload.path,
+    count: payload.events.length,
+    lastTimestamp: lastEvent?.timestamp,
+    lastNodeId: lastEvent?.nodeId,
+    staleTrace: payload.staleTrace,
+    observedGraphHash: payload.observedGraphHash,
+    error: payload.error
+  });
+}
+
+async function handleTraceStream(req: IncomingMessage, res: ServerResponse, projectDir: string, options: ServerOptions) {
+  const tracker = getTraceStreamTracker(options);
+  const clientId = Symbol('trace-stream-client');
+  tracker.clients.add(clientId);
+  let closed = false;
+  let lastSignature = '';
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    tracker.clients.delete(clientId);
+    clearInterval(interval);
+  };
+
+  const emitIfChanged = async (force = false) => {
+    if (closed || res.destroyed) return;
+    try {
+      const payload = await loadCurrentTracePayload(projectDir, options);
+      const signature = traceSignature(payload);
+      if (force || signature !== lastSignature) {
+        lastSignature = signature;
+        writeSseEvent(res, 'trace', payload);
+      }
+    } catch (error) {
+      writeSseEvent(res, 'trace-error', { error: (error as Error).message });
+    }
+  };
+
+  const interval = setInterval(() => {
+    emitIfChanged().catch((error) => writeSseEvent(res, 'trace-error', { error: (error as Error).message }));
+  }, tracker.pollMs);
+  interval.unref?.();
+  req.on('close', cleanup);
+  res.on('close', cleanup);
+  await emitIfChanged(true);
+}
+
+async function rerunSandbox(projectDir: string, options: ServerOptions): Promise<{ ok: boolean; mode: string; hotReload: boolean; message: string; trace: TracePayload }> {
+  const result = await validateProject(projectDir);
+  const trace = await loadCurrentTracePayload(projectDir, options);
+  return {
+    ok: result.success,
+    mode: 'bounded-rerun',
+    hotReload: false,
+    message: result.success
+      ? 'Sandbox verification reran cleanly; true hot reload is not used for host-runtime safety.'
+      : 'Sandbox verification reran and localized a failure; true hot reload is not used for host-runtime safety.',
+    trace
+  };
+}
+
 export async function handleRequest(req: IncomingMessage, res: ServerResponse, options: ServerOptions) {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const projectDir = resolve(options.projectDir);
@@ -546,10 +683,21 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
       return;
     }
 
+    if (req.method === 'GET' && url.pathname === '/api/trace/stream') {
+      await handleTraceStream(req, res, projectDir, options);
+      return;
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/trace') {
       const project = await loadHarnessProject(projectDir);
       const payload = await loadTracePayload(projectDir, options.tracePath, project.manifest.graphHash, project.manifest.targetRuntime);
       sendJson(res, 200, payload);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/sandbox/claude-proof') {
+      const proof = await proveClaudeHostSandbox(projectDir);
+      sendJson(res, proof.ok ? 200 : 409, proof);
       return;
     }
 
@@ -568,6 +716,17 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
         }
         const payload = await handleFactoryChat(projectDir, url, options, parsed as FactoryChatBody);
         sendJson(res, payload.error ? 500 : 200, payload);
+      } catch (error) {
+        sendJson(res, 500, { error: (error as Error).message });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/sandbox/rerun') {
+      if (!authorizeMutationRequest(req, res, options.apiToken ?? '')) return;
+      try {
+        const payload = await rerunSandbox(projectDir, options);
+        sendJson(res, payload.ok ? 200 : 500, payload);
       } catch (error) {
         sendJson(res, 500, { error: (error as Error).message });
       }
@@ -652,7 +811,8 @@ export async function startHarnessEditorServer(options: ServerOptions): Promise<
   const host = options.host ?? '127.0.0.1';
   const requestedPort = options.port ?? 0;
   const apiToken = options.apiToken?.trim() || createApiToken();
-  const resolvedOptions: ServerOptions = { ...options, host, apiToken };
+  const traceStreamTracker: TraceStreamTracker = { clients: new Set(), pollMs: 75 };
+  const resolvedOptions: ServerOptionsWithTracker = { ...options, host, apiToken, traceStreamTracker };
 
   const server: Server = createServer((req, res) => {
     handleRequest(req, res, resolvedOptions).catch((error) => {
@@ -677,12 +837,26 @@ export async function startHarnessEditorServer(options: ServerOptions): Promise<
     host,
     port: boundPort,
     apiToken,
+    debug: {
+      traceStreamClients: () => traceStreamTracker.clients.size
+    },
     close: () =>
       new Promise<void>((resolvePromise, rejectPromise) => {
-        server.close((error) => {
-          if (error) rejectPromise(error);
+        let settled = false;
+        const finish = (error?: Error | null) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(forceClose);
+          clearTimeout(fallbackResolve);
+          if (error && (error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') rejectPromise(error);
           else resolvePromise();
-        });
+        };
+        server.closeIdleConnections?.();
+        const forceClose = setTimeout(() => server.closeAllConnections?.(), 25);
+        forceClose.unref?.();
+        const fallbackResolve = setTimeout(() => finish(), 1_000);
+        fallbackResolve.unref?.();
+        server.close((error) => finish(error));
       })
   };
 }

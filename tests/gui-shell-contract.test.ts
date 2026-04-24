@@ -80,6 +80,8 @@ describe('GUI shell contract: loading canonical project data', () => {
         expect(script).toContain('Save node');
         expect(script).toContain('/api/project/mutate');
         expect(script).toContain('/api/project/skill');
+        expect(script).toContain('/api/trace/stream');
+        expect(script).toContain('Rerun sandbox');
       } else {
         expect(html).toContain('Save node');
         expect(html).toContain('/api/project/mutate');

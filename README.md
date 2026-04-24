@@ -50,12 +50,13 @@ OMOH is now structured as two layers:
 - **Substrate**: the stable `new`, `author`, `serve`, `sandbox`, `export`, `import`, `compile`, `setup`, and `doctor` engine described below.
 - **Harness Factory**: a new additive product layer under `src/factory/` that will drive the substrate from conversational state, reference harness patterns, draft graph synthesis, and action adapters.
 
-The first Factory slice includes:
+The current Factory slice includes:
 
 - file-backed factory session state (`src/factory/state`)
 - a seeded reference pattern registry with provenance for approval gates, review loops, MCP registration, state persistence, retry loops, and subagent delegation (`src/factory/reference`)
 - draft graph synthesis that keeps the existing canonical project model as the source of truth (`src/factory/synthesis`)
 - action adapters that call the current substrate for canonical project materialization, compile, preview, sandbox verification, export, and import (`src/factory/actions`)
+- a focused interview engine that asks one reference-backed question at a time, applies answers into Factory state, and exposes a pure Phase D prompt-routing seam (`src/factory/interview`, `src/factory/hooks`)
 
 This layer is intentionally additive: current CLI commands remain the low-level primitives, while the Factory layer becomes the future interview-driven harness-authoring surface.
 

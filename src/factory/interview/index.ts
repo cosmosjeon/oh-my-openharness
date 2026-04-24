@@ -1,5 +1,11 @@
 import type { RuntimeTarget } from '../../core/types';
-import { findReferencePatterns, getReferencePattern, referenceSelectionsForCapabilities } from '../reference';
+import {
+  buildReferenceInterviewQuestions,
+  findReferencePatterns,
+  getReferencePattern,
+  parseReferenceInterviewQuestionId,
+  referenceSelectionsForCapabilities
+} from '../reference';
 import {
   withFactoryStateUpdate,
   type HarnessFactoryDecision,
@@ -35,42 +41,42 @@ interface CapabilityQuestionConfig {
 const CAPABILITY_QUESTION_CONFIG: Record<InterviewCapability, CapabilityQuestionConfig> = {
   approval: {
     capability: 'approval',
-    decisionKey: 'approval.policy',
+    decisionKey: 'approval-policy',
     priority: 90,
     fallbackQuestion: 'Which actions or file paths should require approval before the harness continues?',
     fallbackReason: 'Approval scope affects how the harness handles risky actions.'
   },
   mcp: {
     capability: 'mcp',
-    decisionKey: 'mcp.scope',
+    decisionKey: 'mcp-scope',
     priority: 80,
     fallbackQuestion: 'What tools or resources should the harness expose through MCP?',
     fallbackReason: 'The draft needs a concrete MCP surface before build-time synthesis.'
   },
   state: {
     capability: 'state',
-    decisionKey: 'state.persistence',
+    decisionKey: 'memory-scope',
     priority: 70,
     fallbackQuestion: 'What state should persist between sessions, and where should the harness store it?',
     fallbackReason: 'Persistence decisions shape the state read/write path in the draft graph.'
   },
   review: {
     capability: 'review',
-    decisionKey: 'review.acceptance',
+    decisionKey: 'acceptance-checks',
     priority: 60,
     fallbackQuestion: 'What review or verification steps must run before the harness is done?',
     fallbackReason: 'A review loop needs explicit acceptance criteria.'
   },
   retry: {
     capability: 'retry',
-    decisionKey: 'retry.budget',
+    decisionKey: 'retry-budget',
     priority: 50,
     fallbackQuestion: 'Which failures are retryable, and what retry budget or stop condition should the harness use?',
     fallbackReason: 'Retry loops need bounded failure handling before the draft is buildable.'
   },
   subagent: {
     capability: 'subagent',
-    decisionKey: 'subagent.routing',
+    decisionKey: 'delegation-plan',
     priority: 40,
     fallbackQuestion: 'Which work should be delegated to subagents, and what ownership boundaries should they follow?',
     fallbackReason: 'Delegation needs clear ownership to keep generated flows safe.'
@@ -288,6 +294,19 @@ function generatedQuestion(state: HarnessFactoryState, now: string): HarnessFact
     };
   }
 
+  const referenceQuestion = buildReferenceInterviewQuestions({
+    intent: state.userIntent,
+    capabilities: capabilitiesForState(state),
+    targetRuntime: state.targetRuntime,
+    referencePatterns: referenceSelectionsForState(state),
+    existingQuestionIds: state.openQuestions.filter((question) => !question.answeredAt).map((question) => question.id),
+    answeredQuestionIds: state.openQuestions.filter((question) => question.answeredAt).map((question) => question.id),
+    confirmedDecisionKeys: state.confirmedDecisions.map((decision) => decision.key),
+    limit: 1,
+    now
+  })[0];
+  if (referenceQuestion) return referenceQuestion;
+
   for (const capability of capabilitiesForState(state)) {
     const config = CAPABILITY_QUESTION_CONFIG[capability];
     if (hasDecision(state, config.decisionKey)) continue;
@@ -314,11 +333,13 @@ function resolveActiveQuestion(state: HarnessFactoryState, now: string, question
 }
 
 function withInterviewContext(state: HarnessFactoryState, now: string): HarnessFactoryState {
+  const requestedCapabilities = normalizeCapabilities([...state.requestedCapabilities, ...capabilitiesForState(state)]);
+  const contextualState = { ...state, requestedCapabilities };
   return withFactoryStateUpdate(
     state,
     {
-      requestedCapabilities: normalizeCapabilities(state.requestedCapabilities),
-      referencePatterns: referenceSelectionsForState(state)
+      requestedCapabilities,
+      referencePatterns: referenceSelectionsForState(contextualState)
     },
     now
   );
@@ -388,12 +409,19 @@ function applyDecisionForQuestion(
       source,
       now
     );
-  } else if (questionId.startsWith('capability.')) {
-    const capability = questionId.slice('capability.'.length) as InterviewCapability;
-    const config = CAPABILITY_QUESTION_CONFIG[capability];
-    if (config) confirmedDecisions = upsertDecision(confirmedDecisions, config.decisionKey, trimmedAnswer, source, now);
   } else {
-    confirmedDecisions = upsertDecision(confirmedDecisions, `interview.${questionId}`, trimmedAnswer, source, now);
+    const parsedReferenceQuestion = parseReferenceInterviewQuestionId(questionId);
+    if (parsedReferenceQuestion) {
+      const capability = parsedReferenceQuestion.category ? capabilityFromCategory(parsedReferenceQuestion.category) : undefined;
+      if (capability && !requestedCapabilities.includes(capability)) requestedCapabilities.push(capability);
+      confirmedDecisions = upsertDecision(confirmedDecisions, parsedReferenceQuestion.decisionKey, trimmedAnswer, source, now);
+    } else if (questionId.startsWith('capability.')) {
+      const capability = questionId.slice('capability.'.length) as InterviewCapability;
+      const config = CAPABILITY_QUESTION_CONFIG[capability];
+      if (config) confirmedDecisions = upsertDecision(confirmedDecisions, config.decisionKey, trimmedAnswer, source, now);
+    } else {
+      confirmedDecisions = upsertDecision(confirmedDecisions, `interview.${questionId}`, trimmedAnswer, source, now);
+    }
   }
 
   return withFactoryStateUpdate(

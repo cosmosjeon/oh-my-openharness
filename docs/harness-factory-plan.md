@@ -302,7 +302,7 @@ The first additive Factory slice now exists in repo shape:
 - `src/factory/actions/` bridges Factory actions to the existing OMOH substrate for materialize/compile/preview/verify/export/import.
 - `src/factory/interview/` and `src/factory/hooks/` are present as explicit future seams.
 
-Next vertical-slice work should build Phase C on this base: implement `nextQuestion(state)` / `applyAnswer(state, reply)` and use the seeded pattern registry to ask one focused question at a time before `materializeFactoryDraft`.
+Phase C now builds on this base with `nextQuestion(state)`, `queueNextQuestion(state)`, `applyAnswer(state, reply)`, `isReadyToDraft(state)`, reference-backed interview question selection, and a pure `routeFactoryPrompt(state, userPrompt)` seam for the future Phase D hook router. The next vertical slice should wire that pure route into runtime hook scripts without changing the substrate boundary.
 
 ## Phase C — Interview engine
 Goal: create the “discussion before build” core loop.

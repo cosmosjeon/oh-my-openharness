@@ -13,11 +13,11 @@
 
 1. 사용자가 만들고 싶은 하네스를 자연어로 설명
 2. Factory가 reference harness 패턴(approval gate, review loop, MCP registration, state persistence, retry loop, subagent delegation)을 찾음
-3. 필요한 질문을 상태에 저장하면서 순차적으로 질문
+3. 필요한 질문을 상태에 저장하면서 reference pattern 기반으로 한 번에 하나씩 질문
 4. draft graph spec을 만들고 기존 canonical project 모델로 materialize
 5. 기존 `serve`, `sandbox`, `export`, `import` 엔진을 action adapter로 호출
 
-첫 구현은 `src/factory/` 아래에 추가되며, 기존 canonical project 구조를 대체하지 않습니다. 즉 Factory는 새 source of truth가 아니라 **현재 OMOH 엔진을 감싸는 제품 레이어**입니다.
+현재 구현은 `src/factory/` 아래에 추가되며, Phase C부터 `nextQuestion` / `applyAnswer` 인터뷰 API와 순수 hook router seam을 포함합니다. 기존 canonical project 구조를 대체하지 않습니다. 즉 Factory는 새 source of truth가 아니라 **현재 OMOH 엔진을 감싸는 제품 레이어**입니다.
 
 ---
 

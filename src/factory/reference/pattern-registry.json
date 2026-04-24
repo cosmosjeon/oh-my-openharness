@@ -1,0 +1,104 @@
+[
+  {
+    "id": "approval-gate.pre-tool-use",
+    "name": "Approval Gate",
+    "category": "approval-gate",
+    "summary": "Route risky tool use through an explicit approval or policy check before execution.",
+    "sourceRepos": [
+      { "repo": "oh-my-claudecode", "paths": ["hooks/pre-tool-use", "skills"], "summary": "Claude Code lifecycle hooks and skill metadata demonstrate permission gating before tool use." },
+      { "repo": "oh-my-openagent", "paths": ["src/hooks/claude-code-hooks/pre-tool-use.ts", "src/hooks"], "summary": "Hook router patterns show structured pre-tool safety checks." },
+      { "repo": "oh-my-codex", "paths": ["src/hooks", ".codex/hooks.json"], "summary": "Codex hook registration and safety prompts provide cross-runtime gating provenance." }
+    ],
+    "capabilities": ["approval", "permission", "safety", "guardrail", "pre-tool-use"],
+    "intentKeywords": ["approval", "approve", "permission", "권한", "승인", "guard", "risk"],
+    "runtimeTargets": ["claude-code", "opencode", "codex"],
+    "primitives": ["PreToolUse", "Permission", "StateWrite"],
+    "extraction": { "mode": "manual-seed", "notes": "Seeded from common pre-tool approval gates; extractor can later confirm hook file and manifest shapes." },
+    "applicability": { "whenToUse": "Use when requested behavior needs human confirmation, policy checks, or elevated tool access.", "risks": ["Too many gates can make the harness unusable; ask what actions truly require approval."], "followUpQuestions": ["Which tools or file paths require approval?", "Who or what decides approval?" ] }
+  },
+  {
+    "id": "review-loop.evaluate-retry",
+    "name": "Review Loop",
+    "category": "review-loop",
+    "summary": "Run a reviewer/verifier pass after implementation and loop back for fixes when checks fail.",
+    "sourceRepos": [
+      { "repo": "gstack", "paths": [".agents/skills/gstack-review", ".agents/skills/gstack-qa"], "summary": "Plan/review/QA skills encode test-fix-verify loops." },
+      { "repo": "oh-my-codex", "paths": ["prompts/code-reviewer.md", "skills/ultraqa"], "summary": "Specialized reviewer roles and QA cycling provide Codex loop provenance." },
+      { "repo": "oh-my-openagent", "paths": ["src/hooks/ralph-loop", "src/agents"], "summary": "Ralph-style evaluation loop provides agentic review/retry semantics." }
+    ],
+    "capabilities": ["review", "qa", "verification", "test", "fix-loop"],
+    "intentKeywords": ["review", "qa", "verify", "검토", "테스트", "quality", "fix"],
+    "runtimeTargets": ["claude-code", "opencode", "codex"],
+    "primitives": ["Loop", "Skill", "PostToolUse", "StateWrite"],
+    "extraction": { "mode": "manual-seed", "notes": "Seeded from review and QA skills; future extractor should index skill descriptions and hook transitions." },
+    "applicability": { "whenToUse": "Use when the harness must inspect outputs and automatically request repairs.", "risks": ["Loop exit criteria must be explicit to avoid endless retries."], "followUpQuestions": ["What proves the work is acceptable?", "How many retries are allowed?" ] }
+  },
+  {
+    "id": "mcp-registration.three-tier",
+    "name": "MCP Registration",
+    "category": "mcp-registration",
+    "summary": "Register tools/resources through an MCP server boundary so the host runtime can call controlled capabilities.",
+    "sourceRepos": [
+      { "repo": "oh-my-openagent", "paths": ["src/mcp", "src/features/skill-mcp-manager"], "summary": "OpenAgent provides the richest MCP registration and management reference." },
+      { "repo": "ouroboros", "paths": ["pyproject.toml", "src/ouroboros"], "summary": "Ouroboros exposes workflow operations through plugin/MCP-style boundaries." },
+      { "repo": "oh-my-claudecode", "paths": ["plugin.json", "hooks"], "summary": "Claude plugin manifest and hooks show installable runtime integration shape." }
+    ],
+    "capabilities": ["mcp", "tool", "server", "resource", "registration"],
+    "intentKeywords": ["mcp", "server", "tool", "도구", "서버", "resource"],
+    "runtimeTargets": ["claude-code", "opencode", "codex"],
+    "primitives": ["MCPServer", "SystemPrompt", "StateRead", "StateWrite"],
+    "extraction": { "mode": "manual-seed", "notes": "Seeded from MCP directories/manifests; future extractor should read manifest server declarations." },
+    "applicability": { "whenToUse": "Use when the generated harness needs callable tools, resources, or structured host integration.", "risks": ["MCP servers expand attack surface; pair with approval gates for risky tools."], "followUpQuestions": ["What tools should the MCP server expose?", "Should transport be stdio or another supported mode?" ] }
+  },
+  {
+    "id": "state-persistence.session-memory",
+    "name": "State Persistence",
+    "category": "state-persistence",
+    "summary": "Persist session decisions, progress, and memory so future prompts can resume safely.",
+    "sourceRepos": [
+      { "repo": "ouroboros", "paths": ["src/ouroboros/orchestrator/workflow_state.py", "src/ouroboros/persistence"], "summary": "Workflow state and checkpointing are the strongest persistence reference." },
+      { "repo": "oh-my-openagent", "paths": ["src/hooks/session-recovery", "src/hooks/runtime-fallback"], "summary": "Session recovery and continuation hooks show runtime lifecycle persistence." },
+      { "repo": "oh-my-codex", "paths": [".omx/state", "skills/note", "skills/wiki"], "summary": "OMX state/notepad/wiki patterns show file-backed continuation state." }
+    ],
+    "capabilities": ["state", "memory", "persistence", "checkpoint", "resume"],
+    "intentKeywords": ["state", "memory", "remember", "persist", "상태", "기억", "checkpoint", "resume"],
+    "runtimeTargets": ["claude-code", "opencode", "codex"],
+    "primitives": ["StateRead", "StateWrite", "SessionStart", "PostToolUse"],
+    "extraction": { "mode": "manual-seed", "notes": "Seeded from state/checkpoint files; future extractor should classify store paths and update hooks." },
+    "applicability": { "whenToUse": "Use when the harness must remember intent, decisions, progress, or verification results.", "risks": ["State schema drift can break resumes; version stored state."], "followUpQuestions": ["What should be remembered between sessions?", "Where should state live?" ] }
+  },
+  {
+    "id": "retry-loop.evaluate-mutate",
+    "name": "Retry Loop",
+    "category": "retry-loop",
+    "summary": "Evaluate a failed attempt, mutate the plan or graph, and retry under bounded conditions.",
+    "sourceRepos": [
+      { "repo": "ouroboros", "paths": ["src/ouroboros/bigbang", "src/ouroboros/orchestrator"], "summary": "Seed/evaluate/mutate loops provide evolutionary retry provenance." },
+      { "repo": "oh-my-openagent", "paths": ["src/hooks/ralph-loop"], "summary": "Ralph loop encodes persistent retry-until-complete orchestration." },
+      { "repo": "oh-my-codex", "paths": ["skills/ralph", "skills/ultraqa"], "summary": "Codex skills expose bounded completion and QA loops." }
+    ],
+    "capabilities": ["retry", "loop", "recovery", "mutation", "ralph"],
+    "intentKeywords": ["retry", "loop", "again", "recover", "반복", "재시도", "ralph", "evolve"],
+    "runtimeTargets": ["claude-code", "opencode", "codex"],
+    "primitives": ["Loop", "Condition", "StateRead", "StateWrite"],
+    "extraction": { "mode": "manual-seed", "notes": "Seeded from Ralph/Ouroboros loops; future extractor should parse stop conditions and scoring functions." },
+    "applicability": { "whenToUse": "Use when failures should trigger a controlled second attempt instead of immediate stop.", "risks": ["Retry loops need caps and explicit failure reporting."], "followUpQuestions": ["What failures are retryable?", "What is the retry budget?" ] }
+  },
+  {
+    "id": "subagent-delegation.role-routing",
+    "name": "Subagent Delegation",
+    "category": "subagent-delegation",
+    "summary": "Split work into specialized agent roles with clear ownership and verification contracts.",
+    "sourceRepos": [
+      { "repo": "oh-my-codex", "paths": ["prompts", "AGENTS.md"], "summary": "Role prompts and delegation rules provide Codex-native subagent design." },
+      { "repo": "oh-my-claudecode", "paths": ["src/agents", "agents"], "summary": "Claude Code agent catalog provides mature role specialization." },
+      { "repo": "gstack", "paths": [".agents/skills", ".agents/agents"], "summary": "Role-based sprint and review methodology provide task-lane decomposition." }
+    ],
+    "capabilities": ["subagent", "delegate", "agent", "parallel", "role"],
+    "intentKeywords": ["subagent", "agent", "delegate", "parallel", "위임", "병렬", "role"],
+    "runtimeTargets": ["claude-code", "opencode", "codex"],
+    "primitives": ["Agent", "Skill", "Sequence", "StateWrite"],
+    "extraction": { "mode": "manual-seed", "notes": "Seeded from agent catalogs; future extractor should index role prompts and task ownership rules." },
+    "applicability": { "whenToUse": "Use when requested work benefits from specialized reviewers, builders, or researchers.", "risks": ["Delegation without ownership causes conflicts; require bounded write scopes."], "followUpQuestions": ["Which roles should exist?", "Which work can safely run in parallel?" ] }
+  }
+]

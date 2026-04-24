@@ -3,9 +3,12 @@ import { join, resolve } from 'node:path';
 import { compileProjectForRuntime } from '../../compiler';
 import { exportProjectBundle, type ExportResult } from '../../compiler/export';
 import { applyRiskConfirmations, generateHarnessProject } from '../../core/generator';
+import { importSeedProject } from '../../core/import-seed';
 import { loadHarnessProject, writeHarnessProject } from '../../core/project';
 import { describeRuntimeTarget } from '../../core/runtime-targets';
 import type { CompileResult, HarnessProject, RuntimeTarget, SandboxRunResult } from '../../core/types';
+import { projectFromFactoryState } from '../synthesis';
+import type { HarnessFactoryState } from '../state';
 import { validateProject } from '../../sandbox/validate';
 import { startHarnessEditorServer, type ServerHandle } from '../../web/server';
 
@@ -20,6 +23,20 @@ export interface FactoryMaterializeRequest {
 export interface FactoryMaterializeResult {
   projectDir: string;
   project: HarnessProject;
+}
+
+export interface FactoryDraftMaterializeRequest {
+  state: HarnessFactoryState;
+  name: string;
+  dir: string;
+  confirmRisk?: boolean;
+}
+
+export interface FactoryImportRequest {
+  fromDir: string;
+  name: string;
+  dir: string;
+  runtime?: RuntimeTarget;
 }
 
 export interface FactoryCompileResult extends CompileResult {
@@ -58,6 +75,23 @@ export async function materializeCanonicalProject(request: FactoryMaterializeReq
   await writeHarnessProject(projectDir, project);
   project = await loadHarnessProject(projectDir);
   return { projectDir, project };
+}
+
+
+export async function materializeFactoryDraft(request: FactoryDraftMaterializeRequest): Promise<FactoryMaterializeResult> {
+  const projectDir = resolve(request.dir, request.name);
+  let project = projectFromFactoryState(request.state, { name: request.name, targetRuntime: request.state.targetRuntime });
+  if (request.confirmRisk) project = applyRiskConfirmations(project, true);
+  await writeHarnessProject(projectDir, project);
+  project = await loadHarnessProject(projectDir);
+  return { projectDir, project };
+}
+
+export async function importCanonicalProjectSeed(request: FactoryImportRequest): Promise<FactoryMaterializeResult> {
+  const projectDir = resolve(request.dir, request.name);
+  const project = await importSeedProject({ sourceDir: request.fromDir, name: request.name, runtime: request.runtime });
+  await writeHarnessProject(projectDir, project);
+  return { projectDir, project: await loadHarnessProject(projectDir) };
 }
 
 export async function compileCanonicalProject(projectDir: string, outDir?: string): Promise<FactoryCompileResult> {

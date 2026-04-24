@@ -291,6 +291,19 @@ Tasks:
 Acceptance:
 - given a requested capability, the system can return 1-3 relevant reference patterns with source repo provenance
 
+
+## Current implementation checkpoint — Phase A/B started
+
+The first additive Factory slice now exists in repo shape:
+
+- `src/factory/state/` defines and persists `HarnessFactoryState`.
+- `src/factory/reference/` seeds the initial reference pattern registry and search API.
+- `src/factory/synthesis/` maps Factory state into the current canonical graph/project model.
+- `src/factory/actions/` bridges Factory actions to the existing OMOH substrate for materialize/compile/preview/verify/export/import.
+- `src/factory/interview/` and `src/factory/hooks/` are present as explicit future seams.
+
+Next vertical-slice work should build Phase C on this base: implement `nextQuestion(state)` / `applyAnswer(state, reply)` and use the seeded pattern registry to ask one focused question at a time before `materializeFactoryDraft`.
+
 ## Phase C — Interview engine
 Goal: create the “discussion before build” core loop.
 

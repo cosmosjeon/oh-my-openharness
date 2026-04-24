@@ -2,6 +2,23 @@
 
 이 문서는 `oh-my-openharness`(OMOH)를 **처음 쓰는 사람도 바로 따라할 수 있게** 한국어로 쉽게 설명한 가이드입니다.
 
+
+---
+
+## Harness Factory 레이어는 무엇인가요? (진행 중)
+
+현재 OMOH의 `new / author / serve / sandbox / export / import / compile / setup / doctor`는 계속 **안정적인 엔진(substrate)** 으로 유지됩니다.
+
+그 위에 새로 추가되는 **Harness Factory** 레이어는 앞으로 다음 흐름을 담당합니다.
+
+1. 사용자가 만들고 싶은 하네스를 자연어로 설명
+2. Factory가 reference harness 패턴(approval gate, review loop, MCP registration, state persistence, retry loop, subagent delegation)을 찾음
+3. 필요한 질문을 상태에 저장하면서 순차적으로 질문
+4. draft graph spec을 만들고 기존 canonical project 모델로 materialize
+5. 기존 `serve`, `sandbox`, `export`, `import` 엔진을 action adapter로 호출
+
+첫 구현은 `src/factory/` 아래에 추가되며, 기존 canonical project 구조를 대체하지 않습니다. 즉 Factory는 새 source of truth가 아니라 **현재 OMOH 엔진을 감싸는 제품 레이어**입니다.
+
 ---
 
 ## 1. 이 도구가 뭐하는 거야?

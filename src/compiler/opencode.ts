@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CompileResult, HarnessProject } from '../core/types';
+import { runtimeCompatibilityReport } from '../core/runtime-compatibility';
 import { buildValidationManifest, DEFAULT_HOOK_EVENTS, mcpServerScript, scriptForHook, traceSchema } from './runtime-common';
 
 export async function compileOpenCode(project: HarnessProject, outDir: string): Promise<CompileResult> {
@@ -13,6 +14,7 @@ export async function compileOpenCode(project: HarnessProject, outDir: string): 
   const exportManifestPath = join(pluginRoot, 'export-manifest.json');
   const hasMcpServer = project.nodes.some((node) => node.kind === 'MCPServer');
   const generatedFiles = [validationManifestPath, traceSchemaPath, bridgeConfigPath, exportManifestPath];
+  const compatibility = runtimeCompatibilityReport(project, 'opencode');
 
   await mkdir(skillsDir, { recursive: true });
   await mkdir(scriptsDir, { recursive: true });
@@ -73,12 +75,14 @@ export async function compileOpenCode(project: HarnessProject, outDir: string): 
         runtimeRoot: '.',
         canonicalSource: ['harness.json', 'graph/nodes.json', 'graph/edges.json', 'layout.json', 'runtime.json'],
         runtimeAdapter: ['oh-my-openharness.jsonc', 'skills/', 'scripts/'],
-        validationArtifacts: ['trace-schema.json', 'validation.json', ...(hasMcpServer ? ['mcp-bridge.json'] : [])]
+        validationArtifacts: ['trace-schema.json', 'validation.json', ...(hasMcpServer ? ['mcp-bridge.json'] : [])],
+        compatibility,
+        warnings: compatibility.warnings
       },
       null,
       2
     )
   );
 
-  return { outDir, pluginRoot, runtime: 'opencode', traceSchemaPath, validationManifestPath, exportManifestPath, generatedFiles };
+  return { outDir, pluginRoot, runtime: 'opencode', traceSchemaPath, validationManifestPath, exportManifestPath, generatedFiles, warnings: compatibility.warnings };
 }

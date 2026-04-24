@@ -1,10 +1,12 @@
 import { join } from 'node:path';
 import type { CompileResult, HarnessProject } from '../core/types';
+import { assertRuntimeCompatibility } from '../core/runtime-compatibility';
 import { compileClaude } from './claude';
 import { compileOpenCode } from './opencode';
 import { compileCodex } from './codex';
 
 export async function compileProjectForRuntime(project: HarnessProject, outDir: string): Promise<CompileResult> {
+  assertRuntimeCompatibility(project, project.manifest.targetRuntime);
   switch (project.manifest.targetRuntime) {
     case 'claude-code':
       return compileClaude(project, join(outDir, 'claude-code'));

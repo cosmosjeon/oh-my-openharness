@@ -1,6 +1,7 @@
 import { cp, mkdir, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import type { HarnessProject, RuntimeTarget } from '../core/types';
+import { assertRuntimeCompatibility, type RuntimeCompatibilityReport } from '../core/runtime-compatibility';
 import { compileProjectForRuntime } from './index';
 
 export interface ExportResult {
@@ -9,6 +10,8 @@ export interface ExportResult {
   runtimeBundleRoot: string;
   runtimeBundleManifestPath: string;
   exportManifestPath: string;
+  compatibility: RuntimeCompatibilityReport;
+  warnings: string[];
 }
 
 export async function exportProjectBundle(projectDir: string, project: HarnessProject, outDir: string): Promise<ExportResult> {
@@ -16,6 +19,7 @@ export async function exportProjectBundle(projectDir: string, project: HarnessPr
   const canonicalDir = join(exportRoot, 'canonical');
   const runtimeDir = join(exportRoot, 'runtime');
   const canonicalEntries = ['harness.json', 'graph', 'layout.json', 'runtime.json', 'authoring', 'registry', 'skills', 'custom-blocks'];
+  const compatibility = assertRuntimeCompatibility(project, project.manifest.targetRuntime);
 
   await mkdir(canonicalDir, { recursive: true });
   await mkdir(runtimeDir, { recursive: true });
@@ -36,7 +40,9 @@ export async function exportProjectBundle(projectDir: string, project: HarnessPr
         runtimeRoot: relative(exportRoot, compileResult.pluginRoot),
         canonicalSource: canonicalEntries,
         runtimeBundleManifestPath: relative(exportRoot, compileResult.exportManifestPath),
-        validationManifestPath: relative(exportRoot, compileResult.validationManifestPath)
+        validationManifestPath: relative(exportRoot, compileResult.validationManifestPath),
+        compatibility,
+        warnings: compatibility.warnings
       },
       null,
       2
@@ -48,6 +54,8 @@ export async function exportProjectBundle(projectDir: string, project: HarnessPr
     runtime: project.manifest.targetRuntime,
     runtimeBundleRoot: compileResult.pluginRoot,
     runtimeBundleManifestPath: compileResult.exportManifestPath,
-    exportManifestPath
+    exportManifestPath,
+    compatibility,
+    warnings: compatibility.warnings
   };
 }

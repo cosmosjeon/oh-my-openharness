@@ -9,7 +9,9 @@ import { startTracePollingFallback } from './trace-stream';
 import './styles.css';
 
 function runtimeBadges(node: HarnessFlowNode) {
-  return node.data.compatibility.length > 0 ? node.data.compatibility.join(', ') : 'custom';
+  return node.data.compatibility.length > 0
+    ? node.data.compatibility.map((entry) => `${entry.runtime}:${entry.level}`).join(', ')
+    : 'custom';
 }
 
 export function App() {

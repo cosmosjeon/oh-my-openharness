@@ -84,9 +84,18 @@ describe('oh-my-openharness local server', () => {
 
     const compatibility = await fetchJson(`${handle!.url}/api/compatibility`);
     expect(compatibility.status).toBe(200);
-    const compatibilityPayload = compatibility.body as { targetRuntime: string; nodes: Array<{ id: string; compatibleRuntimes: string[] }> };
+    const compatibilityPayload = compatibility.body as {
+      targetRuntime: string;
+      runtime: { proofLevel: string; proofDescription: string };
+      status: string;
+      nodes: Array<{ id: string; compatibleRuntimes: string[]; compatibility: { status: string; message: string; compatibleRuntimes: string[] } }>;
+    };
     expect(compatibilityPayload.targetRuntime).toBe('claude-code');
+    expect(compatibilityPayload.runtime.proofLevel).toBe('host-installable');
+    expect(compatibilityPayload.status).toBe('supported');
     expect(compatibilityPayload.nodes.length).toBeGreaterThan(0);
+    expect(compatibilityPayload.nodes[0]?.compatibility.status).toBe('supported');
+    expect(compatibilityPayload.nodes[0]?.compatibility.message).toContain('supported');
 
     const factoryState = await fetchJson(`${handle!.url}/api/factory/state?sessionId=missing`);
     expect(factoryState.status).toBe(200);
@@ -163,6 +172,29 @@ describe('oh-my-openharness local server', () => {
     expect(payload.failure.hook).toBe('UserPromptSubmit');
     expect(payload.failure.message).toBe('localized failure');
     expect(payload.failure.likelyAction).toContain('rerun sandbox verification');
+  });
+
+  test('compatibility API reports runtime-scoped custom block compatibility without registry drift', async () => {
+    const project = await fetchJson(`${handle!.url}/api/project`);
+    const payload = project.body as {
+      nodes: Array<{ id: string; kind: string }>;
+      customBlocks: Array<{ id: string; runtimeTargets?: string[] }>;
+      manifest: { targetRuntime: string };
+    };
+    const customNode = payload.nodes.find((node) => node.kind === 'CustomBlock');
+    if (!customNode || payload.customBlocks.length === 0) return;
+
+    payload.customBlocks = payload.customBlocks.map((block) => ({ ...block, runtimeTargets: ['claude-code'] }));
+    payload.manifest.targetRuntime = 'codex';
+    await writeFile(join(fixture!.projectDir, 'custom-blocks', 'definitions.json'), JSON.stringify(payload.customBlocks, null, 2));
+    await writeFile(join(fixture!.projectDir, 'harness.json'), JSON.stringify(payload.manifest, null, 2));
+
+    const compatibility = await fetchJson(`${handle!.url}/api/compatibility`);
+    const custom = (compatibility.body as { nodes: Array<{ id: string; compatibleRuntimes: string[]; compatibility: { status: string; compatibleRuntimes: string[] } }> }).nodes.find((node) => node.id === customNode.id)!;
+
+    expect(custom.compatibleRuntimes).toEqual(['claude-code']);
+    expect(custom.compatibility.compatibleRuntimes).toEqual(['claude-code']);
+    expect(custom.compatibility.status).toBe('error');
   });
 
   test('persists layout updates without mutating other files', async () => {

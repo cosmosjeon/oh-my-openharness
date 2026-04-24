@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CompileResult, HarnessProject } from '../core/types';
+import { runtimeCompatibilityReport } from '../core/runtime-compatibility';
 import { buildValidationManifest, DEFAULT_HOOK_EVENTS, mcpServerScript, scriptForHook, traceSchema } from './runtime-common';
 
 function buildHooksConfig(project: HarnessProject) {
@@ -31,6 +32,7 @@ export async function compileClaude(project: HarnessProject, outDir: string): Pr
   const traceSchemaPath = join(pluginRoot, 'trace-schema.json');
   const generatedFiles = [pluginJsonPath, hookJsonPath, traceSchemaPath, validationManifestPath, exportManifestPath];
   const hasMcpServer = project.nodes.some((node) => node.kind === 'MCPServer');
+  const compatibility = runtimeCompatibilityReport(project, 'claude-code');
 
   await writeFile(pluginJsonPath, JSON.stringify({ name: project.manifest.name, version: project.manifest.version, description: project.manifest.description, license: 'MIT', skills: './skills', hooks: './hooks/hooks.json', ...(hasMcpServer ? { mcpServers: './.mcp.json' } : {}) }, null, 2));
   await writeFile(hookJsonPath, JSON.stringify(buildHooksConfig(project), null, 2));
@@ -79,12 +81,14 @@ export async function compileClaude(project: HarnessProject, outDir: string): Pr
         runtimeRoot: '.',
         canonicalSource: ['harness.json', 'graph/nodes.json', 'graph/edges.json', 'layout.json', 'runtime.json'],
         runtimeAdapter: ['plugin.json', 'hooks/hooks.json', 'skills/', 'scripts/'],
-        validationArtifacts: ['trace-schema.json', 'validation.json', ...(hasMcpServer ? ['.mcp.json'] : [])]
+        validationArtifacts: ['trace-schema.json', 'validation.json', ...(hasMcpServer ? ['.mcp.json'] : [])],
+        compatibility,
+        warnings: compatibility.warnings
       },
       null,
       2
     )
   );
 
-  return { outDir, pluginRoot, runtime: 'claude-code', traceSchemaPath, validationManifestPath, exportManifestPath, generatedFiles };
+  return { outDir, pluginRoot, runtime: 'claude-code', traceSchemaPath, validationManifestPath, exportManifestPath, generatedFiles, warnings: compatibility.warnings };
 }

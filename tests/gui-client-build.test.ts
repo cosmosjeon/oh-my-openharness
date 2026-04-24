@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import packageJson from '../package.json' with { type: 'json' };
 import { applyRiskConfirmations, generateHarnessProject } from '../src/core/generator';
 import { writeHarnessProject } from '../src/core/project';
-import { catalogFromProject, compatibilityForNode, serializeFlowLayout, skillForFlowNode, toReactFlowEdges, toReactFlowNodes } from '../src/web/client/graph';
+import { catalogFromProject, compatibilityForNode, runtimeCompatibilityForNode, serializeFlowLayout, skillForFlowNode, toReactFlowEdges, toReactFlowNodes } from '../src/web/client/graph';
 import { startHarnessEditorServer } from '../src/web/server';
 
 const test = (name: string, fn: Parameters<typeof bunTest>[1]) => bunTest(name, fn, 120000);
@@ -59,6 +59,11 @@ describe('React Flow GUI client foundation', () => {
     expect(catalog.blocks).toBe(project.registry.blocks);
     expect(catalog.composites).toBe(project.registry.composites);
     expect(compatibilityForNode(project, node)).toEqual(['claude-code', 'opencode', 'codex']);
+    expect(runtimeCompatibilityForNode(project, node).map((entry) => `${entry.runtime}:${entry.level}`)).toEqual([
+      'claude-code:supported',
+      'opencode:supported',
+      'codex:supported'
+    ]);
   });
 
   test('skill inspector resolution follows canonical skill ids from Skill node config', () => {
@@ -69,6 +74,35 @@ describe('React Flow GUI client foundation', () => {
 
     expect(flowNode.data.config?.skillId).toBe('skill-main');
     expect(skillForFlowNode(project, flowNode)?.id).toBe('skill-main');
+  });
+
+  test('custom block compatibility badges follow runtime target metadata', () => {
+    const project = {
+      ...projectPayload(),
+      ...(() => {
+        const generated = applyRiskConfirmations(generateHarnessProject('gui-custom-block', 'Create a harness with custom novel runtime block'), true);
+        return {
+          manifest: generated.manifest,
+          nodes: generated.nodes,
+          edges: generated.edges,
+          layout: generated.layout,
+          skills: generated.skills,
+          composites: generated.composites,
+          customBlocks: generated.customBlocks,
+          registry: generated.registry,
+          authoring: generated.authoring,
+          runtimeIntents: generated.runtimeIntents ?? []
+        };
+      })()
+    };
+    const customNode = project.nodes.find((node) => node.kind === 'CustomBlock')!;
+    project.customBlocks = project.customBlocks.map((block) => ({ ...block, runtimeTargets: ['claude-code'] }));
+
+    expect(runtimeCompatibilityForNode(project, customNode).map((entry) => `${entry.runtime}:${entry.level}`)).toEqual([
+      'claude-code:supported',
+      'opencode:error',
+      'codex:error'
+    ]);
   });
 
   test('Vite builds the client and the server can serve built assets', async () => {

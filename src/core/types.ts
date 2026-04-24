@@ -9,6 +9,7 @@ export type RuntimeTarget = 'claude-code' | 'opencode' | 'codex';
 export type RegistryCategory = 'hook' | 'authoring' | 'control-flow' | 'state' | 'runtime' | 'safety';
 export type SafetyLevel = 'safe' | 'confirm';
 export type RuntimeIntentKind = 'hook' | 'mcp-server' | 'state' | 'custom-runtime';
+export type RuntimeCompatibilityLevel = 'supported' | 'warn' | 'error';
 
 export type NodeKind =
   | HookEvent
@@ -307,6 +308,7 @@ export interface CompileResult {
   validationManifestPath: string;
   exportManifestPath: string;
   generatedFiles: string[];
+  warnings?: string[];
 }
 
 export interface RuntimeValidationStep {

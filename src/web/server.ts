@@ -12,6 +12,7 @@ import { routeFactoryPrompt } from '../factory/hooks/routing';
 import { orchestrateFactoryAction, type FactoryActionOrchestrationResult } from '../factory/actions';
 import { validateProject } from '../sandbox/validate';
 import { proveClaudeHostSandbox } from '../sandbox/claude-proof';
+import { runtimeCompatibilityReport } from '../core/runtime-compatibility';
 import { renderViewerHtml } from './viewer';
 
 export interface ServerOptions {
@@ -658,13 +659,19 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse, o
 
     if (req.method === 'GET' && url.pathname === '/api/compatibility') {
       const project = await loadHarnessProject(projectDir);
+      const report = runtimeCompatibilityReport(project, project.manifest.targetRuntime);
       sendJson(res, 200, {
         targetRuntime: project.manifest.targetRuntime,
         supportedRuntimes: project.manifest.supportedRuntimes ?? [project.manifest.targetRuntime],
-        nodes: project.nodes.map((node) => ({
+        runtime: report.runtime,
+        status: report.status,
+        warnings: report.warnings,
+        errors: report.errors,
+        nodes: report.nodes.map((node) => ({
           id: node.id,
           kind: node.kind,
-          compatibleRuntimes: project.registry.blocks.find((block) => block.kind === node.kind)?.compatibleRuntimes ?? []
+          compatibleRuntimes: node.compatibleRuntimes,
+          compatibility: node
         }))
       });
       return;

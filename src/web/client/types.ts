@@ -1,5 +1,5 @@
 import type { Edge, Node } from '@xyflow/react';
-import type { GraphEdge, GraphNode, HarnessProject, LayoutNode, RegistryBlock, RuntimeTarget, SkillFile } from '../../core/types';
+import type { GraphEdge, GraphNode, HarnessProject, LayoutNode, RegistryBlock, RuntimeCompatibilityLevel, RuntimeTarget, SkillFile } from '../../core/types';
 
 export type ProjectPayload = Pick<
   HarnessProject,
@@ -10,7 +10,7 @@ export interface FlowNodeData extends Record<string, unknown> {
   label: string;
   kind: GraphNode['kind'];
   config?: Record<string, unknown>;
-  compatibility: RuntimeTarget[];
+  compatibility: RuntimeCompatibilityEntry[];
   safety?: RegistryBlock['safety'];
 }
 
@@ -20,6 +20,12 @@ export type HarnessFlowEdge = Edge<{ label?: string }>;
 export interface CatalogPayload {
   blocks: ProjectPayload['registry']['blocks'];
   composites: ProjectPayload['registry']['composites'];
+}
+
+export interface RuntimeCompatibilityEntry {
+  runtime: RuntimeTarget;
+  level: RuntimeCompatibilityLevel;
+  reason: string;
 }
 
 export interface FactoryStateView {

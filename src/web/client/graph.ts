@@ -1,6 +1,6 @@
 import type { Node } from '@xyflow/react';
 import type { GraphNode, LayoutNode, RegistryBlock, RuntimeTarget } from '../../core/types';
-import type { HarnessFlowEdge, HarnessFlowNode, ProjectPayload } from './types';
+import type { HarnessFlowEdge, HarnessFlowNode, ProjectPayload, RuntimeCompatibilityEntry } from './types';
 
 function layoutById(layout: LayoutNode[]): Map<string, LayoutNode> {
   return new Map(layout.map((entry) => [entry.id, entry]));
@@ -11,9 +11,26 @@ export function registryBlockForNode(project: ProjectPayload, node: GraphNode): 
 }
 
 export function compatibilityForNode(project: ProjectPayload, node: GraphNode): RuntimeTarget[] {
+  if (node.kind === 'CustomBlock') {
+    const customBlockId = typeof node.config?.customBlockId === 'string' ? node.config.customBlockId : undefined;
+    const definition = customBlockId ? project.customBlocks.find((block) => block.id === customBlockId) : project.customBlocks[0];
+    if (definition?.runtimeTargets) return [...new Set(definition.runtimeTargets)];
+  }
   const block = registryBlockForNode(project, node);
   if (block) return block.compatibleRuntimes;
   return project.runtimeIntents?.filter((intent) => intent.sourceNodeIds.includes(node.id)).map((intent) => intent.targetRuntime) ?? [];
+}
+
+export function runtimeCompatibilityForNode(project: ProjectPayload, node: GraphNode): RuntimeCompatibilityEntry[] {
+  const compatible = compatibilityForNode(project, node);
+  const runtimes: RuntimeTarget[] = ['claude-code', 'opencode', 'codex'];
+  return runtimes.map((runtime) => ({
+    runtime,
+    level: compatible.includes(runtime) ? 'supported' : 'error',
+    reason: compatible.includes(runtime)
+      ? `${node.kind} is supported on ${runtime}.`
+      : `${node.kind} is not compatible with ${runtime}.`
+  }));
 }
 
 export function toReactFlowNodes(project: ProjectPayload): HarnessFlowNode[] {
@@ -28,7 +45,7 @@ export function toReactFlowNodes(project: ProjectPayload): HarnessFlowNode[] {
         label: node.label,
         kind: node.kind,
         ...(node.config ? { config: node.config } : {}),
-        compatibility: compatibilityForNode(project, node),
+        compatibility: runtimeCompatibilityForNode(project, node),
         ...(block?.safety ? { safety: block.safety } : {})
       },
       type: 'default'

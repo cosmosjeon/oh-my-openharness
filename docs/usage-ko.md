@@ -2,6 +2,13 @@
 
 이 문서는 `oh-my-openharness`(OMOH)를 **처음 쓰는 사람도 바로 따라할 수 있게** 한국어로 쉽게 설명한 가이드입니다.
 
+현재 엔트리포인트는 2개입니다.
+
+- `oh-my-openharness` — 기존 substrate/package 이름
+- `harness-editor` — 같은 엔진을 실행하는 release-facing alias
+
+즉 아래 예시에서 `bunx oh-my-openharness ...` 대신 `bunx harness-editor ...`를 써도 됩니다.
+
 
 ---
 
@@ -95,6 +102,12 @@ bun install
 
 ```bash
 bunx oh-my-openharness
+```
+
+alias로 시작하려면:
+
+```bash
+bunx harness-editor
 ```
 
 도움말 보기:
@@ -280,7 +293,27 @@ bunx oh-my-openharness new \
   --confirm-risk
 ```
 
-### 4) Claude에서 직접 작업
+### 4) Factory interview/build proof 흐름
+
+현재 Harness Editor release proof는 아래 스크립트로 관리합니다.
+
+```bash
+bun run scripts/harness-editor-golden-path.ts
+```
+
+이 스크립트는 다음 증거를 남깁니다.
+
+- Harness Factory 질문/응답 transcript
+- canonical project build 결과
+- GUI/API snapshot
+- inspector skill 수정 proof
+- sandbox trace / forced failure / rerun proof
+- Claude export tree
+- multi-runtime roundtrip log
+
+자세한 artifact 목록은 [`harness-editor-golden-path.md`](./harness-editor-golden-path.md)를 봅니다.
+
+### 5) Claude에서 직접 작업
 
 프로젝트 폴더로 들어간 뒤:
 
@@ -301,7 +334,7 @@ Inspect this harness project and explain what nodes, edges, runtime intents, and
 Extend this harness so it adds one new condition node and one review-oriented edge while preserving the current graph.
 ```
 
-### 5) 다시 검증
+### 6) 다시 검증
 
 Claude가 수정한 뒤:
 
@@ -506,4 +539,26 @@ opencode --help
 
 - [README.md](../README.md)
 - [gui-shell-contract.md](./gui-shell-contract.md)
+- [harness-editor-architecture.md](./harness-editor-architecture.md)
+- [harness-editor-troubleshooting.md](./harness-editor-troubleshooting.md)
+- [harness-editor-golden-path.md](./harness-editor-golden-path.md)
 - [phase0-review.md](./phase0-review.md)
+
+---
+
+## Release closeout 때 실제로 돌리는 명령
+
+Phase J 기준 최종 확인 명령은 아래 그대로입니다.
+
+```bash
+bunx tsc --noEmit
+bun run test
+bun run scripts/harness-editor-golden-path.ts
+rg -n "source of truth|harness\.yaml|canonical" README.md docs HARNESS_EDITOR_PRD.md .omx/plans/harness-editor-100-percent-master-plan.md
+git status --short
+```
+
+주의:
+
+- 자동화된 proof lane은 **real Claude host proof**를 항상 통과시키는 게 아닙니다.
+- 인증된 Claude host가 없으면 blocker를 기록하고, synthetic replay만으로 100% claim 하지 않습니다.

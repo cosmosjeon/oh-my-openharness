@@ -1,0 +1,9 @@
+ M README.md
+ M docs/gui-shell-contract.md
+ M docs/usage-ko.md
+ M package.json
+?? docs/harness-editor-architecture.md
+?? docs/harness-editor-golden-path.md
+?? docs/harness-editor-troubleshooting.md
+?? proofs/
+?? scripts/

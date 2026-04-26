@@ -2,6 +2,15 @@
 
 `oh-my-openharness` (OMOH) is a Bun-first CLI for AI coding-agent workflows. It sets up Claude Code / OpenCode / Codex integrations, writes a canonical harness project to disk, serves a local browser editor over that project, exports runtime-specific bundles, validates generated output, and supports a bounded import-seed path back into the canonical project.
 
+## Product name and entrypoints
+
+The current shipped surface has **two entrypoints**:
+
+- `oh-my-openharness` — the stable substrate package/bin name
+- `harness-editor` — a compatibility/bin alias that invokes the same substrate
+
+For release docs and the golden path, `harness-editor` is the preferred end-user name, while `oh-my-openharness` remains fully supported for compatibility and package continuity.
+
 ## 한국어 사용 가이드
 
 영문 설명보다 **한국어로 빠르게 이해하고 바로 써보고 싶으면** 아래 문서를 먼저 보는 걸 추천합니다.
@@ -105,6 +114,12 @@ For the published package path:
 bunx oh-my-openharness
 ```
 
+Alias entrypoint:
+
+```bash
+bunx harness-editor
+```
+
 ## Commands
 
 ```text
@@ -121,6 +136,43 @@ oh-my-openharness serve   --project <dir> [--port <port>] [--host <host>] [--tra
 oh-my-openharness catalog
 oh-my-openharness demo    --name <name> --prompt <prompt> [--dir <dir>]
 ```
+
+`harness-editor` exposes the same command surface because it resolves to the same entrypoint script.
+
+## Harness Editor golden path
+
+The current release-proof command is:
+
+```bash
+bun run scripts/harness-editor-golden-path.ts
+```
+
+That proof writes artifacts under:
+
+```text
+proofs/harness-editor-golden-path/artifacts/
+```
+
+Key docs for the release path:
+
+- `docs/harness-editor-golden-path.md`
+- `docs/harness-editor-architecture.md`
+- `docs/harness-editor-troubleshooting.md`
+- `docs/usage-ko.md`
+
+## Final release verification gates
+
+Phase J release closeout uses these exact commands:
+
+```bash
+bunx tsc --noEmit
+bun run test
+bun run scripts/harness-editor-golden-path.ts
+rg -n "source of truth|harness\.yaml|canonical" README.md docs HARNESS_EDITOR_PRD.md .omx/plans/harness-editor-100-percent-master-plan.md
+git status --short
+```
+
+Honesty note: the automated proof lane may record an explicit blocker for real Claude-host proof rather than claiming synthetic replay is sufficient.
 
 ## Example flows
 
@@ -212,5 +264,8 @@ Current automated verification covers:
 ## Related docs
 
 - `docs/gui-shell-contract.md` — browser editor/server contract
+- `docs/harness-editor-architecture.md` — canonical project / Factory / GUI / sandbox / runtime layer map
+- `docs/harness-editor-troubleshooting.md` — setup, token, trace, compatibility, and host-proof failure modes
+- `docs/harness-editor-golden-path.md` — current proof command plus artifact index
 - `docs/phase0-review.md` — historical Phase 0 review with current-gap notes
 - `.omx/plans/oh-my-openharness/ACTIVE/current-state.md` — current planning/status truth for the OMOH phase chain

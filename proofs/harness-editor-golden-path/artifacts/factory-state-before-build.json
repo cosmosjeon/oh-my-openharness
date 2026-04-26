@@ -1,0 +1,115 @@
+{
+  "schemaVersion": "0.1.0",
+  "sessionId": "golden-path-build",
+  "stage": "drafting",
+  "userIntent": "I want a Claude harness with approval, MCP, memory, review, and retry.",
+  "requestedCapabilities": [
+    "approval",
+    "mcp",
+    "state",
+    "review",
+    "retry",
+    "subagent"
+  ],
+  "openQuestions": [],
+  "confirmedDecisions": [
+    {
+      "key": "runtime.target",
+      "value": "claude-code",
+      "source": "user",
+      "createdAt": "2026-04-26T02:00:00.000Z"
+    },
+    {
+      "key": "approval-policy",
+      "value": "Require approval before destructive filesystem writes, external execution, and credential-changing actions.",
+      "source": "user",
+      "createdAt": "2026-04-26T02:01:00.000Z"
+    },
+    {
+      "key": "mcp-scope",
+      "value": "Expose MCP access for project files, reference search, and runtime diagnostics needed by the harness.",
+      "source": "user",
+      "createdAt": "2026-04-26T02:02:00.000Z"
+    },
+    {
+      "key": "acceptance-checks",
+      "value": "Run a review loop that checks sandbox success, compatibility warnings, and completion evidence before finishing.",
+      "source": "user",
+      "createdAt": "2026-04-26T02:03:00.000Z"
+    },
+    {
+      "key": "memory-scope",
+      "value": "Persist working memory, build state, verification status, and export metadata under the project-local state path.",
+      "source": "user",
+      "createdAt": "2026-04-26T02:04:00.000Z"
+    },
+    {
+      "key": "retry-budget",
+      "value": "Retry transient failures up to 2 times, then stop with a localized failure summary and next action.",
+      "source": "user",
+      "createdAt": "2026-04-26T02:05:00.000Z"
+    },
+    {
+      "key": "delegation-plan",
+      "value": "Delegate independent research or verification work to bounded subagents with explicit ownership.",
+      "source": "user",
+      "createdAt": "2026-04-26T02:06:00.000Z"
+    }
+  ],
+  "referencePatterns": [
+    {
+      "id": "approval-gate.pre-tool-use",
+      "sourceRepo": "oh-my-claudecode",
+      "why": "capability:approval, keyword:approval",
+      "score": 6
+    },
+    {
+      "id": "mcp-registration.three-tier",
+      "sourceRepo": "oh-my-openagent",
+      "why": "capability:mcp, keyword:mcp",
+      "score": 6
+    },
+    {
+      "id": "retry-loop.evaluate-mutate",
+      "sourceRepo": "ouroboros",
+      "why": "capability:retry, keyword:retry",
+      "score": 6
+    },
+    {
+      "id": "review-loop.evaluate-retry",
+      "sourceRepo": "gstack",
+      "why": "capability:review, keyword:review",
+      "score": 6
+    },
+    {
+      "id": "state-persistence.session-memory",
+      "sourceRepo": "ouroboros",
+      "why": "capability:state, keyword:memory",
+      "score": 6
+    },
+    {
+      "id": "subagent-delegation.role-routing",
+      "sourceRepo": "oh-my-codex",
+      "why": "runtime:claude-code",
+      "score": 1
+    }
+  ],
+  "draftGraphSpec": {
+    "nodes": [],
+    "edges": [],
+    "runtimeIntents": [],
+    "skills": []
+  },
+  "preview": {
+    "status": "not-opened"
+  },
+  "verification": {
+    "status": "not-run"
+  },
+  "actions": {
+    "history": []
+  },
+  "createdAt": "2026-04-26T09:59:09.372Z",
+  "updatedAt": "2026-04-26T02:06:00.000Z",
+  "targetRuntime": "claude-code"
+}

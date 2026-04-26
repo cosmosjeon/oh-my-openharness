@@ -1,0 +1,163 @@
+{
+  "event": "trace",
+  "data": {
+    "source": "trace-file",
+    "path": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/sandbox/trace.jsonl",
+    "events": [
+      {
+        "timestamp": "2026-04-26T09:59:09.654Z",
+        "eventType": "hook-activation",
+        "hook": "SessionStart",
+        "nodeId": "sessionstart-1",
+        "status": "ok",
+        "message": "golden-path-project:SessionStart",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"session\":\"sandbox-start\"}"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:09.904Z",
+        "eventType": "hook-activation",
+        "hook": "UserPromptSubmit",
+        "nodeId": "userpromptsubmit-3",
+        "status": "ok",
+        "message": "golden-path-project:UserPromptSubmit",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\"}"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:09.904Z",
+        "eventType": "hook-activation",
+        "hook": "UserPromptSubmit",
+        "nodeId": "main-skill",
+        "status": "ok",
+        "message": "Skill activated: Generate Harness Skeleton",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\"}",
+          "nodeKind": "Skill"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:09.904Z",
+        "eventType": "branch-selection",
+        "hook": "UserPromptSubmit",
+        "nodeId": "permission-gate",
+        "status": "ok",
+        "message": "Permission gate requires approval before risky changes",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\"}",
+          "branch": "approval_required",
+          "nodeKind": "Permission"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:09.904Z",
+        "eventType": "loop-iteration",
+        "hook": "UserPromptSubmit",
+        "nodeId": "review-loop",
+        "status": "ok",
+        "message": "Loop entered for representative sandbox replay",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\"}",
+          "iteration": 1,
+          "nodeKind": "Loop"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:09.904Z",
+        "eventType": "custom-block",
+        "hook": "UserPromptSubmit",
+        "nodeId": "custom-block",
+        "status": "ok",
+        "message": "Custom runtime block ready for downstream compilers",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\"}",
+          "nodeKind": "CustomBlock"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:10.149Z",
+        "eventType": "state-transition",
+        "hook": "PreToolUse",
+        "nodeId": "pretooluse-5",
+        "status": "ok",
+        "message": "golden-path-project:PreToolUse",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"tool\":\"Write\"}"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:10.388Z",
+        "eventType": "state-transition",
+        "hook": "PostToolUse",
+        "nodeId": "post-tool-use",
+        "status": "ok",
+        "message": "golden-path-project:PostToolUse",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"tool\":\"Write\",\"ok\":true}"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:10.630Z",
+        "eventType": "hook-activation",
+        "hook": "Stop",
+        "nodeId": "stop",
+        "status": "ok",
+        "message": "golden-path-project:Stop",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"reason\":\"done\"}"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:10.630Z",
+        "eventType": "state-transition",
+        "hook": "Stop",
+        "nodeId": "state-write",
+        "status": "ok",
+        "message": "State persisted for future GUI inspection",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"reason\":\"done\"}",
+          "stateKey": "project.prompt",
+          "valuePreview": "done",
+          "nodeKind": "StateWrite"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:10.872Z",
+        "hook": "MCPServer",
+        "nodeId": "mcp-server",
+        "status": "ok",
+        "eventType": "mcp-server",
+        "message": "golden-path-project:MCPServer",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code"
+        }
+      }
+    ],
+    "expectedGraphHash": "c42fb9f21881f58a",
+    "observedGraphHash": "c42fb9f21881f58a",
+    "staleTrace": false
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "workspaceRoot": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew",
+  "artifactRoot": "/Users/cosmos/Documents/harness/proofs/harness-editor-golden-path/artifacts",
+  "builtProject": "../../../../var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project",
+  "secondProject": "../../../../var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-second-project",
+  "proofNotes": [
+    "The automated lane captures an explicit Claude host proof blocker unless HARNESS_REAL_CLAUDE_PROOF=1 is enabled on an authenticated host.",
+    "GUI evidence is captured through the built server HTML plus API snapshots, skill-edit persistence, graph mutation proofs, SSE trace output, and rerun/stale-trace state."
+  ]
+}

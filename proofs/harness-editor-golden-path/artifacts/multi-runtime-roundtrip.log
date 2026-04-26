@@ -1,0 +1,20 @@
+$ cwd: /Users/cosmos/Documents/harness
+$ bun test tests/multi-runtime-roundtrip.test.ts
+exit: 0
+
+--- stdout ---
+bun test v1.3.6 (d530ed99)
+
+--- stderr ---
+
+tests/multi-runtime-roundtrip.test.ts:
+(pass) multi-runtime compatibility and roundtrip proof > compatibility matrix reports supported entries for each runtime and built-in block kind [0.82ms]
+(pass) multi-runtime compatibility and roundtrip proof > export refuses runtime-incompatible CustomBlock nodes before writing bundle artifacts [4.33ms]
+(pass) multi-runtime compatibility and roundtrip proof > roundtrips claude-code through compile export and import with supported semantics [13.25ms]
+(pass) multi-runtime compatibility and roundtrip proof > roundtrips opencode through compile export and import with supported semantics [10.80ms]
+(pass) multi-runtime compatibility and roundtrip proof > roundtrips codex through compile export and import with supported semantics [12.29ms]
+
+ 5 pass
+ 0 fail
+ 198 expect() calls
+Ran 5 tests across 1 file. [152.00ms]

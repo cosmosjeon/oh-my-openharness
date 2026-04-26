@@ -21,12 +21,12 @@ In scope today:
 - project load via `loadHarnessProject`
 - layout persistence
 - graph mutations through HTTP endpoints
-- trace/debug polling and stale-trace surfacing
+- live trace/debug streaming plus stale-trace surfacing
 - rendering of authoring summary and confirmation state in the browser
 
 Explicitly out of scope today:
 
-- WebSocket/live trace streaming
+- WebSocket transport (the current transport is SSE, not WebSocket)
 - GUI-triggered runtime setup / compile / export / sandbox execution
 - GUI-side approval/denial of risky confirmation requests
 - live host-runtime conversation inside the browser
@@ -90,6 +90,17 @@ Trace discovery currently checks, in order:
 3. `<projectDir>/compiler/<runtime>/trace.jsonl`
 4. `<projectDir>/sandbox/trace.jsonl`
 
+### `GET /api/trace/stream`
+
+Returns a Server-Sent Events stream of trace payload updates.
+
+Current transport behavior:
+
+- server pushes trace frames when the signature changes
+- client opens `EventSource('/api/trace/stream')`
+- client falls back to interval polling if the stream errors
+- stale-trace detection still uses graph hash comparison inside each payload
+
 ### `POST /api/layout`
 
 Persists layout-only changes.
@@ -132,7 +143,7 @@ Highlight behavior is trace-driven:
 - custom blocks retain special styling
 - stale trace is surfaced explicitly when graph hashes diverge
 
-The browser polls trace state on an interval rather than streaming it.
+The browser prefers live SSE trace streaming and falls back to polling if the stream path fails.
 
 ---
 
@@ -140,7 +151,7 @@ The browser polls trace state on an interval rather than streaming it.
 
 ```text
 canonical project on disk  ---> /api/project ---> browser editor state
-runtime trace artifacts    ---> /api/trace   ---> browser trace/debug state
+runtime trace artifacts    ---> /api/trace + /api/trace/stream ---> browser trace/debug state
 browser layout/graph edits ---> /api/layout or /api/project/mutate ---> canonical project on disk
 ```
 
@@ -176,8 +187,8 @@ The browser/editor is still intentionally bounded:
 2. **No browser-side approval workflow**  
    Confirmation requests are visible in the browser, but risk-bearing approvals still belong to CLI/runtime flows.
 
-3. **Polling, not streaming**  
-   Trace updates are fetched periodically, not pushed.
+3. **SSE with polling fallback, not WebSocket/live host embedding**  
+   Trace updates stream over SSE, with a polling fallback if the stream path fails.
 
 4. **Single-user local workflow**  
    There is no concurrency/version handshake for simultaneous browser/CLI editing.
@@ -193,6 +204,7 @@ The current contract is grounded by:
 
 - `tests/server.test.ts`
 - `tests/gui-shell-contract.test.ts`
+- `tests/live-debugger.test.ts`
 - `tests/host-authoring.test.ts`
 - `tests/phase5-proof-audit.test.ts`
 

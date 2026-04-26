@@ -1,0 +1,9 @@
+$ cwd: /Users/cosmos/Documents/harness
+$ ./bin/harness-editor
+exit: 0
+
+--- stdout ---
+oh-my-openharness setup is ready. Run `oh-my-openharness setup --runtimes claude` or use a TTY to start the wizard.
+
+--- stderr ---
+

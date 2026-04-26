@@ -1,0 +1,485 @@
+{
+  "ok": true,
+  "action": "draft",
+  "state": {
+    "schemaVersion": "0.1.0",
+    "sessionId": "golden-path-build",
+    "stage": "drafting",
+    "userIntent": "I want a Claude harness with approval, MCP, memory, review, and retry.",
+    "requestedCapabilities": [
+      "approval",
+      "mcp",
+      "state",
+      "review",
+      "retry",
+      "subagent"
+    ],
+    "openQuestions": [],
+    "confirmedDecisions": [
+      {
+        "key": "runtime.target",
+        "value": "claude-code",
+        "source": "user",
+        "createdAt": "2026-04-26T02:00:00.000Z"
+      },
+      {
+        "key": "approval-policy",
+        "value": "Require approval before destructive filesystem writes, external execution, and credential-changing actions.",
+        "source": "user",
+        "createdAt": "2026-04-26T02:01:00.000Z"
+      },
+      {
+        "key": "mcp-scope",
+        "value": "Expose MCP access for project files, reference search, and runtime diagnostics needed by the harness.",
+        "source": "user",
+        "createdAt": "2026-04-26T02:02:00.000Z"
+      },
+      {
+        "key": "acceptance-checks",
+        "value": "Run a review loop that checks sandbox success, compatibility warnings, and completion evidence before finishing.",
+        "source": "user",
+        "createdAt": "2026-04-26T02:03:00.000Z"
+      },
+      {
+        "key": "memory-scope",
+        "value": "Persist working memory, build state, verification status, and export metadata under the project-local state path.",
+        "source": "user",
+        "createdAt": "2026-04-26T02:04:00.000Z"
+      },
+      {
+        "key": "retry-budget",
+        "value": "Retry transient failures up to 2 times, then stop with a localized failure summary and next action.",
+        "source": "user",
+        "createdAt": "2026-04-26T02:05:00.000Z"
+      },
+      {
+        "key": "delegation-plan",
+        "value": "Delegate independent research or verification work to bounded subagents with explicit ownership.",
+        "source": "user",
+        "createdAt": "2026-04-26T02:06:00.000Z"
+      }
+    ],
+    "referencePatterns": [
+      {
+        "id": "approval-gate.pre-tool-use",
+        "sourceRepo": "oh-my-claudecode",
+        "why": "capability:approval, keyword:approval",
+        "score": 6
+      },
+      {
+        "id": "mcp-registration.three-tier",
+        "sourceRepo": "oh-my-openagent",
+        "why": "capability:mcp, keyword:mcp",
+        "score": 6
+      },
+      {
+        "id": "retry-loop.evaluate-mutate",
+        "sourceRepo": "ouroboros",
+        "why": "capability:retry, keyword:retry",
+        "score": 6
+      },
+      {
+        "id": "review-loop.evaluate-retry",
+        "sourceRepo": "gstack",
+        "why": "capability:review, keyword:review",
+        "score": 6
+      },
+      {
+        "id": "state-persistence.session-memory",
+        "sourceRepo": "ouroboros",
+        "why": "capability:state, keyword:memory",
+        "score": 6
+      },
+      {
+        "id": "subagent-delegation.role-routing",
+        "sourceRepo": "oh-my-codex",
+        "why": "runtime:claude-code",
+        "score": 1
+      }
+    ],
+    "draftGraphSpec": {
+      "nodes": [
+        {
+          "id": "sessionstart-1",
+          "kind": "SessionStart",
+          "label": "Session Start"
+        },
+        {
+          "id": "systemprompt-2",
+          "kind": "SystemPrompt",
+          "label": "System Prompt Guardrails"
+        },
+        {
+          "id": "userpromptsubmit-3",
+          "kind": "UserPromptSubmit",
+          "label": "User Prompt Submit"
+        },
+        {
+          "id": "sequence-4",
+          "kind": "Sequence",
+          "label": "Primary Flow"
+        },
+        {
+          "id": "pretooluse-5",
+          "kind": "PreToolUse",
+          "label": "Pre Tool Use"
+        },
+        {
+          "id": "main-skill",
+          "kind": "Skill",
+          "label": "Generate Harness Skeleton",
+          "config": {
+            "skillId": "skill-main"
+          }
+        },
+        {
+          "id": "permission-gate",
+          "kind": "Permission",
+          "label": "Permission Gate"
+        },
+        {
+          "id": "mcp-server",
+          "kind": "MCPServer",
+          "label": "MCP Server Registration"
+        },
+        {
+          "id": "review-loop",
+          "kind": "Loop",
+          "label": "Review Loop"
+        },
+        {
+          "id": "state-read",
+          "kind": "StateRead",
+          "label": "Read Existing State"
+        },
+        {
+          "id": "custom-block",
+          "kind": "CustomBlock",
+          "label": "Novel Runtime Block",
+          "config": {
+            "customBlockId": "custom-runtime-1"
+          }
+        },
+        {
+          "id": "state-write",
+          "kind": "StateWrite",
+          "label": "Persist State"
+        },
+        {
+          "id": "post-tool-use",
+          "kind": "PostToolUse",
+          "label": "Post Tool Use"
+        },
+        {
+          "id": "stop",
+          "kind": "Stop",
+          "label": "Stop"
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-1",
+          "from": "sessionstart-1",
+          "to": "userpromptsubmit-3"
+        },
+        {
+          "id": "edge-2",
+          "from": "userpromptsubmit-3",
+          "to": "main-skill"
+        },
+        {
+          "id": "edge-3",
+          "from": "main-skill",
+          "to": "sequence-4"
+        },
+        {
+          "id": "edge-4",
+          "from": "main-skill",
+          "to": "permission-gate",
+          "label": "requires-review"
+        },
+        {
+          "id": "edge-5",
+          "from": "permission-gate",
+          "to": "sequence-4",
+          "label": "approved"
+        },
+        {
+          "id": "edge-6",
+          "from": "sequence-4",
+          "to": "mcp-server",
+          "label": "register-mcp"
+        },
+        {
+          "id": "edge-7",
+          "from": "sequence-4",
+          "to": "review-loop",
+          "label": "review"
+        },
+        {
+          "id": "edge-8",
+          "from": "review-loop",
+          "to": "sequence-4",
+          "label": "retry"
+        },
+        {
+          "id": "edge-9",
+          "from": "main-skill",
+          "to": "custom-block",
+          "label": "extend-runtime"
+        },
+        {
+          "id": "edge-10",
+          "from": "custom-block",
+          "to": "sequence-4",
+          "label": "runtime-generated"
+        },
+        {
+          "id": "edge-11",
+          "from": "sequence-4",
+          "to": "state-write",
+          "label": "persist-state"
+        },
+        {
+          "id": "edge-12",
+          "from": "state-write",
+          "to": "post-tool-use",
+          "label": "state-ready"
+        },
+        {
+          "id": "edge-13",
+          "from": "post-tool-use",
+          "to": "stop",
+          "label": "complete"
+        }
+      ],
+      "runtimeIntents": [],
+      "skills": [
+        {
+          "id": "skill-main",
+          "name": "golden-path-project-skill",
+          "description": "Generated primary skill",
+          "content": "---\nname: golden-path-project-skill\ndescription: Generated by oh-my-openharness for Claude Code\n---\n\n# golden-path-project\n\nUser intent: I want a Claude harness with approval, MCP, memory, review, and retry.\nRequested capabilities: approval, mcp, state, review, retry, subagent\nReference patterns: approval-gate.pre-tool-use, mcp-registration.three-tier, retry-loop.evaluate-mutate, review-loop.evaluate-retry, state-persistence.session-memory, subagent-delegation.role-routing\nConfirmed decisions: runtime.target=claude-code; approval-policy=Require approval before destructive filesystem writes, external execution, and credential-changing actions.; mcp-scope=Expose MCP access for project files, reference search, and runtime diagnostics needed by the harness.; acceptance-checks=Run a review loop that checks sandbox success, compatibility warnings, and completion evidence before finishing.; memory-scope=Persist working memory, build state, verification status, and export metadata under the project-local state path.; retry-budget=Retry transient failures up to 2 times, then stop with a localized failure summary and next action.; delegation-plan=Delegate independent research or verification work to bounded subagents with explicit ownership.\n\n## Target runtime\n- Claude Code\n\n## Behavior\n- Generate a working harness skeleton from intent\n- Preserve safety boundaries\n- Keep runtime choice explicit before writing runtime-specific artifacts\n- Emit trace-friendly execution output\n\n## Safety notes\n- Layout is stored separately from semantic graph data.\n- Generated harness targets Claude Code for the current authoring lane.\n- Confirm enabling elevated runtime or tool permissions for the generated harness.\n- Custom blocks are opaque and must be traced at runtime.\n"
+        }
+      ]
+    },
+    "preview": {
+      "status": "not-opened"
+    },
+    "verification": {
+      "status": "not-run"
+    },
+    "actions": {
+      "lastAction": {
+        "action": "draft",
+        "status": "passed",
+        "startedAt": "2026-04-26T02:20:00.000Z",
+        "completedAt": "2026-04-26T02:20:00.000Z",
+        "message": "Draft graph spec synthesized from Factory state.",
+        "output": {
+          "nodeCount": 14,
+          "edgeCount": 13,
+          "skillCount": 1
+        }
+      },
+      "history": [
+        {
+          "action": "draft",
+          "status": "passed",
+          "startedAt": "2026-04-26T02:20:00.000Z",
+          "completedAt": "2026-04-26T02:20:00.000Z",
+          "message": "Draft graph spec synthesized from Factory state.",
+          "output": {
+            "nodeCount": 14,
+            "edgeCount": 13,
+            "skillCount": 1
+          }
+        }
+      ]
+    },
+    "createdAt": "2026-04-26T09:59:09.372Z",
+    "updatedAt": "2026-04-26T02:20:00.000Z",
+    "targetRuntime": "claude-code"
+  },
+  "record": {
+    "action": "draft",
+    "status": "passed",
+    "startedAt": "2026-04-26T02:20:00.000Z",
+    "completedAt": "2026-04-26T02:20:00.000Z",
+    "message": "Draft graph spec synthesized from Factory state.",
+    "output": {
+      "nodeCount": 14,
+      "edgeCount": 13,
+      "skillCount": 1
+    }
+  },
+  "draft": {
+    "summary": "Harness Factory draft for claude-code\nIntent: I want a Claude harness with approval, MCP, memory, review, and retry.\nCapabilities: approval, mcp, state, review, retry, subagent\nGraph: 14 nodes, 13 edges, 1 skills",
+    "spec": {
+      "nodes": [
+        {
+          "id": "sessionstart-1",
+          "kind": "SessionStart",
+          "label": "Session Start"
+        },
+        {
+          "id": "systemprompt-2",
+          "kind": "SystemPrompt",
+          "label": "System Prompt Guardrails"
+        },
+        {
+          "id": "userpromptsubmit-3",
+          "kind": "UserPromptSubmit",
+          "label": "User Prompt Submit"
+        },
+        {
+          "id": "sequence-4",
+          "kind": "Sequence",
+          "label": "Primary Flow"
+        },
+        {
+          "id": "pretooluse-5",
+          "kind": "PreToolUse",
+          "label": "Pre Tool Use"
+        },
+        {
+          "id": "main-skill",
+          "kind": "Skill",
+          "label": "Generate Harness Skeleton",
+          "config": {
+            "skillId": "skill-main"
+          }
+        },
+        {
+          "id": "permission-gate",
+          "kind": "Permission",
+          "label": "Permission Gate"
+        },
+        {
+          "id": "mcp-server",
+          "kind": "MCPServer",
+          "label": "MCP Server Registration"
+        },
+        {
+          "id": "review-loop",
+          "kind": "Loop",
+          "label": "Review Loop"
+        },
+        {
+          "id": "state-read",
+          "kind": "StateRead",
+          "label": "Read Existing State"
+        },
+        {
+          "id": "custom-block",
+          "kind": "CustomBlock",
+          "label": "Novel Runtime Block",
+          "config": {
+            "customBlockId": "custom-runtime-1"
+          }
+        },
+        {
+          "id": "state-write",
+          "kind": "StateWrite",
+          "label": "Persist State"
+        },
+        {
+          "id": "post-tool-use",
+          "kind": "PostToolUse",
+          "label": "Post Tool Use"
+        },
+        {
+          "id": "stop",
+          "kind": "Stop",
+          "label": "Stop"
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-1",
+          "from": "sessionstart-1",
+          "to": "userpromptsubmit-3"
+        },
+        {
+          "id": "edge-2",
+          "from": "userpromptsubmit-3",
+          "to": "main-skill"
+        },
+        {
+          "id": "edge-3",
+          "from": "main-skill",
+          "to": "sequence-4"
+        },
+        {
+          "id": "edge-4",
+          "from": "main-skill",
+          "to": "permission-gate",
+          "label": "requires-review"
+        },
+        {
+          "id": "edge-5",
+          "from": "permission-gate",
+          "to": "sequence-4",
+          "label": "approved"
+        },
+        {
+          "id": "edge-6",
+          "from": "sequence-4",
+          "to": "mcp-server",
+          "label": "register-mcp"
+        },
+        {
+          "id": "edge-7",
+          "from": "sequence-4",
+          "to": "review-loop",
+          "label": "review"
+        },
+        {
+          "id": "edge-8",
+          "from": "review-loop",
+          "to": "sequence-4",
+          "label": "retry"
+        },
+        {
+          "id": "edge-9",
+          "from": "main-skill",
+          "to": "custom-block",
+          "label": "extend-runtime"
+        },
+        {
+          "id": "edge-10",
+          "from": "custom-block",
+          "to": "sequence-4",
+          "label": "runtime-generated"
+        },
+        {
+          "id": "edge-11",
+          "from": "sequence-4",
+          "to": "state-write",
+          "label": "persist-state"
+        },
+        {
+          "id": "edge-12",
+          "from": "state-write",
+          "to": "post-tool-use",
+          "label": "state-ready"
+        },
+        {
+          "id": "edge-13",
+          "from": "post-tool-use",
+          "to": "stop",
+          "label": "complete"
+        }
+      ],
+      "runtimeIntents": [],
+      "skills": [
+        {
+          "id": "skill-main",
+          "name": "golden-path-project-skill",
+          "description": "Generated primary skill",
+          "content": "---\nname: golden-path-project-skill\ndescription: Generated by oh-my-openharness for Claude Code\n---\n\n# golden-path-project\n\nUser intent: I want a Claude harness with approval, MCP, memory, review, and retry.\nRequested capabilities: approval, mcp, state, review, retry, subagent\nReference patterns: approval-gate.pre-tool-use, mcp-registration.three-tier, retry-loop.evaluate-mutate, review-loop.evaluate-retry, state-persistence.session-memory, subagent-delegation.role-routing\nConfirmed decisions: runtime.target=claude-code; approval-policy=Require approval before destructive filesystem writes, external execution, and credential-changing actions.; mcp-scope=Expose MCP access for project files, reference search, and runtime diagnostics needed by the harness.; acceptance-checks=Run a review loop that checks sandbox success, compatibility warnings, and completion evidence before finishing.; memory-scope=Persist working memory, build state, verification status, and export metadata under the project-local state path.; retry-budget=Retry transient failures up to 2 times, then stop with a localized failure summary and next action.; delegation-plan=Delegate independent research or verification work to bounded subagents with explicit ownership.\n\n## Target runtime\n- Claude Code\n\n## Behavior\n- Generate a working harness skeleton from intent\n- Preserve safety boundaries\n- Keep runtime choice explicit before writing runtime-specific artifacts\n- Emit trace-friendly execution output\n\n## Safety notes\n- Layout is stored separately from semantic graph data.\n- Generated harness targets Claude Code for the current authoring lane.\n- Confirm enabling elevated runtime or tool permissions for the generated harness.\n- Custom blocks are opaque and must be traced at runtime.\n"
+        }
+      ]
+    }
+  }
+}

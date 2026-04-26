@@ -1,0 +1,17 @@
+$ cwd: /Users/cosmos/Documents/harness
+$ bun run build:web
+exit: 0
+
+--- stdout ---
+vite v8.0.10 building client environment for production...
+[2Ktransforming...✓ 175 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/web-client/index.html                   0.39 kB │ gzip:   0.26 kB
+dist/web-client/assets/index-Cb7oMz1L.css   17.47 kB │ gzip:   3.31 kB
+dist/web-client/assets/index-CUr6QDy6.js   376.21 kB │ gzip: 119.51 kB
+
+✓ built in 200ms
+
+--- stderr ---
+$ vite build

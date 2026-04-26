@@ -1,0 +1,248 @@
+{
+  "sandboxDir": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/oh-my-openharness-vVjUSQ",
+  "installDir": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/compiler",
+  "traceFile": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/sandbox/trace.jsonl",
+  "htmlReport": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/sandbox/trace-report.html",
+  "events": [
+    {
+      "timestamp": "2026-04-26T09:59:11.122Z",
+      "eventType": "hook-activation",
+      "hook": "SessionStart",
+      "nodeId": "sessionstart-1",
+      "status": "ok",
+      "message": "golden-path-project:SessionStart",
+      "metadata": {
+        "graphHash": "c42fb9f21881f58a",
+        "runtime": "claude-code",
+        "payloadPreview": "{\"session\":\"sandbox-start\"}"
+      }
+    },
+    {
+      "timestamp": "2026-04-26T09:59:11.364Z",
+      "eventType": "hook-activation",
+      "hook": "UserPromptSubmit",
+      "nodeId": "userpromptsubmit-3",
+      "status": "ok",
+      "message": "golden-path-project:UserPromptSubmit",
+      "metadata": {
+        "graphHash": "c42fb9f21881f58a",
+        "runtime": "claude-code",
+        "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}"
+      }
+    },
+    {
+      "timestamp": "2026-04-26T09:59:11.364Z",
+      "eventType": "hook-activation",
+      "hook": "UserPromptSubmit",
+      "nodeId": "main-skill",
+      "status": "ok",
+      "message": "Skill activated: Generate Harness Skeleton",
+      "metadata": {
+        "graphHash": "c42fb9f21881f58a",
+        "runtime": "claude-code",
+        "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}",
+        "nodeKind": "Skill"
+      }
+    },
+    {
+      "timestamp": "2026-04-26T09:59:11.364Z",
+      "eventType": "branch-selection",
+      "hook": "UserPromptSubmit",
+      "nodeId": "permission-gate",
+      "status": "ok",
+      "message": "Permission gate requires approval before risky changes",
+      "metadata": {
+        "graphHash": "c42fb9f21881f58a",
+        "runtime": "claude-code",
+        "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}",
+        "branch": "approval_required",
+        "nodeKind": "Permission"
+      }
+    },
+    {
+      "timestamp": "2026-04-26T09:59:11.364Z",
+      "eventType": "loop-iteration",
+      "hook": "UserPromptSubmit",
+      "nodeId": "review-loop",
+      "status": "ok",
+      "message": "Loop entered for representative sandbox replay",
+      "metadata": {
+        "graphHash": "c42fb9f21881f58a",
+        "runtime": "claude-code",
+        "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}",
+        "iteration": 1,
+        "nodeKind": "Loop"
+      }
+    },
+    {
+      "timestamp": "2026-04-26T09:59:11.364Z",
+      "eventType": "custom-block",
+      "hook": "UserPromptSubmit",
+      "nodeId": "custom-block",
+      "status": "ok",
+      "message": "Custom runtime block ready for downstream compilers",
+      "metadata": {
+        "graphHash": "c42fb9f21881f58a",
+        "runtime": "claude-code",
+        "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}",
+        "nodeKind": "CustomBlock"
+      }
+    },
+    {
+      "timestamp": "2026-04-26T09:59:11.365Z",
+      "eventType": "failure",
+      "hook": "UserPromptSubmit",
+      "nodeId": "userpromptsubmit-3",
+      "status": "error",
+      "message": "Forced sandbox failure for trace/error surfacing",
+      "metadata": {
+        "graphHash": "c42fb9f21881f58a",
+        "runtime": "claude-code",
+        "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}"
+      }
+    },
+    {
+      "timestamp": "2026-04-26T09:59:11.367Z",
+      "eventType": "failure",
+      "hook": "UserPromptSubmit",
+      "nodeId": "userpromptsubmit-3",
+      "status": "error",
+      "message": "Hook command failed for UserPromptSubmit",
+      "metadata": {
+        "details": "Forced sandbox failure for trace/error surfacing",
+        "runtime": "claude-code",
+        "graphHash": "c42fb9f21881f58a"
+      }
+    },
+    {
+      "timestamp": "2026-04-26T09:59:11.369Z",
+      "eventType": "failure",
+      "hook": "Sandbox",
+      "nodeId": "trace-validation",
+      "status": "error",
+      "message": "Sandbox trace validation failed",
+      "metadata": {
+        "runtime": "claude-code",
+        "graphHash": "c42fb9f21881f58a",
+        "details": "missing event types: state-transition, mcp-server"
+      }
+    }
+  ],
+  "success": false,
+  "failure": {
+    "timestamp": "2026-04-26T09:59:11.367Z",
+    "eventType": "failure",
+    "hook": "UserPromptSubmit",
+    "nodeId": "userpromptsubmit-3",
+    "status": "error",
+    "message": "Hook command failed for UserPromptSubmit",
+    "metadata": {
+      "details": "Forced sandbox failure for trace/error surfacing",
+      "runtime": "claude-code",
+      "graphHash": "c42fb9f21881f58a"
+    }
+  },
+  "validation": {
+    "manifest": {
+      "runtime": "claude-code",
+      "runtimeRoot": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/compiler/claude-code/.claude-plugin",
+      "traceSchemaPath": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/compiler/claude-code/.claude-plugin/trace-schema.json",
+      "steps": [
+        {
+          "hook": "SessionStart",
+          "nodeId": "sessionstart-1",
+          "command": "node",
+          "args": [
+            "scripts/SessionStart.mjs"
+          ]
+        },
+        {
+          "hook": "UserPromptSubmit",
+          "nodeId": "userpromptsubmit-3",
+          "command": "node",
+          "args": [
+            "scripts/UserPromptSubmit.mjs"
+          ]
+        },
+        {
+          "hook": "PreToolUse",
+          "nodeId": "pretooluse-5",
+          "command": "node",
+          "args": [
+            "scripts/PreToolUse.mjs"
+          ]
+        },
+        {
+          "hook": "PostToolUse",
+          "nodeId": "post-tool-use",
+          "command": "node",
+          "args": [
+            "scripts/PostToolUse.mjs"
+          ]
+        },
+        {
+          "hook": "Stop",
+          "nodeId": "stop",
+          "command": "node",
+          "args": [
+            "scripts/Stop.mjs"
+          ]
+        }
+      ],
+      "mcpServers": [
+        {
+          "name": "golden-path-project-generated",
+          "nodeId": "mcp-server",
+          "command": "node",
+          "args": [
+            "./scripts/mcp-server.mjs"
+          ]
+        }
+      ]
+    },
+    "traceSchema": {
+      "version": 1,
+      "eventTypes": [
+        "hook-activation",
+        "branch-selection",
+        "state-transition",
+        "loop-iteration",
+        "custom-block",
+        "failure",
+        "mcp-server"
+      ],
+      "requiredFields": [
+        "timestamp",
+        "eventType",
+        "hook",
+        "nodeId",
+        "status",
+        "message"
+      ],
+      "requiredMetadata": [
+        "graphHash",
+        "runtime"
+      ],
+      "expectedEventTypes": [
+        "hook-activation",
+        "branch-selection",
+        "state-transition",
+        "loop-iteration",
+        "custom-block",
+        "mcp-server"
+      ]
+    },
+    "eventTypeCounts": {
+      "hook-activation": 3,
+      "branch-selection": 1,
+      "loop-iteration": 1,
+      "custom-block": 1,
+      "failure": 2
+    },
+    "missingEventTypes": [
+      "state-transition",
+      "mcp-server"
+    ],
+    "violations": []
+  }
+}

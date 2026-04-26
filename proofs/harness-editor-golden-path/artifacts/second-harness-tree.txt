@@ -1,0 +1,19 @@
+# golden-path-second-project
+- authoring
+  - decision.json
+- compiler
+- custom-blocks
+  - definitions.json
+- graph
+  - composites.json
+  - edges.json
+  - nodes.json
+- harness.json
+- layout.json
+- registry
+  - blocks.json
+  - composites.json
+- runtime.json
+- skills
+  - golden-path-second-project-skill.md
+  - index.json

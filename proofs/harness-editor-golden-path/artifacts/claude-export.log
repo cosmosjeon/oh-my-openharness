@@ -1,0 +1,212 @@
+$ cwd: /Users/cosmos/Documents/harness
+$ bun run src/index.ts export --project /var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project
+exit: 0
+
+--- stdout ---
+{
+  "outDir": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/export/claude-code",
+  "runtime": "claude-code",
+  "runtimeBundleRoot": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/export/claude-code/runtime/claude-code/.claude-plugin",
+  "runtimeBundleManifestPath": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/export/claude-code/runtime/claude-code/.claude-plugin/export-manifest.json",
+  "exportManifestPath": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/export/claude-code/export-manifest.json",
+  "compatibility": {
+    "targetRuntime": "claude-code",
+    "runtime": {
+      "targetRuntime": "claude-code",
+      "displayName": "Claude",
+      "hostCommand": "claude",
+      "proofLevel": "host-installable",
+      "proofDescription": "Claude bundles include plugin/package install metadata plus fixture sandbox validation; real host proof is recorded separately when auth is available."
+    },
+    "status": "supported",
+    "nodes": [
+      {
+        "id": "sessionstart-1",
+        "kind": "SessionStart",
+        "label": "Session Start",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "SessionStart is supported on claude-code."
+      },
+      {
+        "id": "systemprompt-2",
+        "kind": "SystemPrompt",
+        "label": "System Prompt Guardrails",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "SystemPrompt is supported on claude-code."
+      },
+      {
+        "id": "userpromptsubmit-3",
+        "kind": "UserPromptSubmit",
+        "label": "User Prompt Submit",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "UserPromptSubmit is supported on claude-code."
+      },
+      {
+        "id": "sequence-4",
+        "kind": "Sequence",
+        "label": "Primary Flow",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "Sequence is supported on claude-code."
+      },
+      {
+        "id": "pretooluse-5",
+        "kind": "PreToolUse",
+        "label": "Pre Tool Use",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "PreToolUse is supported on claude-code."
+      },
+      {
+        "id": "main-skill",
+        "kind": "Skill",
+        "label": "Generate Harness Skeleton",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "Skill is supported on claude-code."
+      },
+      {
+        "id": "permission-gate",
+        "kind": "Permission",
+        "label": "Permission Gate",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "Permission is supported on claude-code."
+      },
+      {
+        "id": "mcp-server",
+        "kind": "MCPServer",
+        "label": "MCP Server Registration",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "MCPServer is supported on claude-code."
+      },
+      {
+        "id": "review-loop",
+        "kind": "Loop",
+        "label": "Review Loop",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "Loop is supported on claude-code."
+      },
+      {
+        "id": "state-read",
+        "kind": "StateRead",
+        "label": "Read Existing State",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "StateRead is supported on claude-code."
+      },
+      {
+        "id": "custom-block",
+        "kind": "CustomBlock",
+        "label": "Novel Runtime Block",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "CustomBlock is supported on claude-code."
+      },
+      {
+        "id": "state-write",
+        "kind": "StateWrite",
+        "label": "Persist State",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "StateWrite is supported on claude-code."
+      },
+      {
+        "id": "post-tool-use",
+        "kind": "PostToolUse",
+        "label": "Post Tool Use",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "PostToolUse is supported on claude-code."
+      },
+      {
+        "id": "stop",
+        "kind": "Stop",
+        "label": "Stop",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "Stop is supported on claude-code."
+      },
+      {
+        "id": "condition-1",
+        "kind": "Condition",
+        "label": "Golden path condition",
+        "compatibleRuntimes": [
+          "claude-code",
+          "opencode",
+          "codex"
+        ],
+        "status": "supported",
+        "message": "Condition is supported on claude-code."
+      }
+    ],
+    "warnings": [],
+    "errors": []
+  },
+  "warnings": [],
+  "runtimeDisplayName": "Claude"
+}
+
+--- stderr ---
+

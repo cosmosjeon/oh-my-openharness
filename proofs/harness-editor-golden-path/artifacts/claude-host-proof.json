@@ -1,0 +1,8 @@
+{
+  "ok": false,
+  "status": "blocked",
+  "runtime": "claude-code",
+  "projectDir": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project",
+  "reason": "Real Claude host sandbox proof is disabled. Set HARNESS_REAL_CLAUDE_PROOF=1 on an authenticated Claude Code host to attempt release proof; V1 100% cannot be claimed from synthetic replay alone.",
+  "artifactPath": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/oh-my-openharness-claude-proof-09gqQF/claude-host-proof.json"
+}

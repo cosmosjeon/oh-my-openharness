@@ -22,6 +22,7 @@
     "ci": "bunx tsc --noEmit && bun run test && npm pack --dry-run",
     "test": "bun test --timeout 180000 tests/*.test.ts",
     "typecheck": "bunx tsc --noEmit",
+    "proof:harness-editor": "bun run scripts/harness-editor-golden-path.ts",
     "demo": "bun run src/index.ts demo --name demo-harness --prompt \"Create a review harness with approvals, MCP server support, and retry loop\"",
     "build:web": "vite build",
     "dev:web": "vite --host 127.0.0.1"

@@ -1,0 +1,44 @@
+[
+  {
+    "questionId": "runtime.target",
+    "question": "Which runtime should the harness target: Claude Code, OpenCode, or Codex?",
+    "reason": "The factory draft cannot materialize until the target runtime is chosen.",
+    "answer": "Claude Code"
+  },
+  {
+    "questionId": "reference::approval-gate.pre-tool-use::approval-policy",
+    "question": "Which actions should stop for explicit approval before the harness runs them?",
+    "reason": "Approval Gate adds a human safety checkpoint for risky or policy-bound actions. Source: oh-my-claudecode. Match: capability:approval, keyword:approval.",
+    "answer": "Require approval before destructive filesystem writes, external execution, and credential-changing actions."
+  },
+  {
+    "questionId": "reference::mcp-registration.three-tier::mcp-scope",
+    "question": "For claude-code, which tools or resources should be exposed through the MCP boundary?",
+    "reason": "MCP Registration requires a clear MCP surface before the harness can register tools or resources. Source: oh-my-openagent. Match: capability:mcp, keyword:mcp.",
+    "answer": "Expose MCP access for project files, reference search, and runtime diagnostics needed by the harness."
+  },
+  {
+    "questionId": "reference::review-loop.evaluate-retry::acceptance-checks",
+    "question": "What checks should the harness run before it considers the work done?",
+    "reason": "Review Loop needs explicit acceptance criteria so review and repair loops can terminate cleanly. Source: gstack. Match: capability:review, keyword:review.",
+    "answer": "Run a review loop that checks sandbox success, compatibility warnings, and completion evidence before finishing."
+  },
+  {
+    "questionId": "reference::state-persistence.session-memory::memory-scope",
+    "question": "What decisions or progress should the harness remember between prompts, retries, or resumed sessions?",
+    "reason": "State Persistence needs a concrete persistence scope to resume safely without storing too much. Source: ouroboros. Match: capability:state, keyword:memory.",
+    "answer": "Persist working memory, build state, verification status, and export metadata under the project-local state path."
+  },
+  {
+    "questionId": "reference::retry-loop.evaluate-mutate::retry-budget",
+    "question": "When a check fails, how should the harness retry and when should it stop escalating?",
+    "reason": "Retry Loop only works when retryable failures and stop conditions are explicit. Source: ouroboros. Match: capability:retry, keyword:retry.",
+    "answer": "Retry transient failures up to 2 times, then stop with a localized failure summary and next action."
+  },
+  {
+    "questionId": "reference::subagent-delegation.role-routing::delegation-plan",
+    "question": "Which parts of the job should be delegated to specialized subagents, and what ownership boundaries should they keep?",
+    "reason": "Subagent Delegation benefits from role boundaries so parallel work does not conflict. Source: oh-my-codex. Match: runtime:claude-code.",
+    "answer": "Delegate independent research or verification work to bounded subagents with explicit ownership."
+  }
+]

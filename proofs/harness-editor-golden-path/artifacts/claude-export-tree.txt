@@ -1,0 +1,19 @@
+# .claude-plugin
+- .mcp.json
+- custom-blocks.json
+- export-manifest.json
+- hooks
+  - hooks.json
+- plugin.json
+- scripts
+  - mcp-server.mjs
+  - PostToolUse.mjs
+  - PreToolUse.mjs
+  - SessionStart.mjs
+  - Stop.mjs
+  - UserPromptSubmit.mjs
+- skills
+  - golden-path-project-skill
+    - SKILL.md
+- trace-schema.json
+- validation.json

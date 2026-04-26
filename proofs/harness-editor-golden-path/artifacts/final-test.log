@@ -1,0 +1,226 @@
+$ bun test --timeout 180000 tests/*.test.ts
+bun test v1.3.6 (d530ed99)
+
+tests/gui-client-build.test.ts:
+(pass) React Flow GUI client foundation > dependency additions stay within the Phase G allowlist [0.10ms]
+(pass) React Flow GUI client foundation > canonical graph maps to React Flow nodes/edges with stable ids and layout serialization [0.68ms]
+(pass) React Flow GUI client foundation > catalog and compatibility helpers derive from registry/runtime metadata [0.12ms]
+(pass) React Flow GUI client foundation > skill inspector resolution follows canonical skill ids from Skill node config [0.38ms]
+(pass) React Flow GUI client foundation > custom block compatibility badges follow runtime target metadata [0.29ms]
+(pass) React Flow GUI client foundation > Vite builds the client and the server can serve built assets [1379.58ms]
+
+tests/factory-actions.test.ts:
+(pass) Harness Factory action orchestrator > draft action returns deterministic summary/spec without writing a project [29.92ms]
+(pass) Harness Factory action orchestrator > build action materializes canonical project and stores projectPath and graphHash [22.47ms]
+(pass) Harness Factory action orchestrator > preview action records url token and status without serializing server handle [23.08ms]
+(pass) Harness Factory action orchestrator > verify action records sandbox pass summary and trace path [2799.25ms]
+(pass) Harness Factory action orchestrator > export action records runtime bundle path and runtime [19.24ms]
+(pass) Harness Factory action orchestrator > action failure stores action error timestamp and stage-safe failure state [8.72ms]
+
+tests/compiler.test.ts:
+(pass) compileClaude > writes a Claude plugin package with colocated hooks, skills, and scripts [2.21ms]
+(pass) compileClaude > embeds canonical node ids and validation metadata into generated trace scripts [1.68ms]
+(pass) runtime-specific compilers > writes an OpenCode-native authoring bundle and validation manifest [1.78ms]
+(pass) runtime-specific compilers > writes a Codex-native authoring bundle and validation manifest [2.89ms]
+
+tests/phase5-proof-audit.test.ts:
+(pass) Phase 5 proof audit > phase 5 proof manifest lists every scenario artifact [1.79ms]
+(pass) Phase 5 proof audit > phase 5 proofs stay aligned with runtime and verification contracts [3.93ms]
+(pass) Phase 5 proof audit > phase 5 latest packet satisfies the 3/2/2 runtime threshold against actual proofs [1.47ms]
+(pass) Phase 5 proof audit > phase 5 includes explicit Codex author + serve/editor + export + validate evidence [0.83ms]
+
+tests/packet-validator.test.ts:
+(pass) continuation packet validator > latest packet satisfies the continuation schema contract and points at real proof artifacts [2.80ms]
+
+tests/host-authoring.test.ts:
+(pass) host authoring bridge > applies graph deltas to the canonical project summary, graph, runtime intents, skills, and persisted layout [4.20ms]
+(pass) host authoring bridge > rejects host graph deltas that reference non-existent live nodes [0.14ms]
+(pass) host authoring bridge > rejects host-added skills that escape the skills directory [0.12ms]
+
+tests/sandbox.test.ts:
+(pass) validateProject > runs generated hooks in isolation and emits structured trace output [1171.76ms]
+(pass) validateProject > surfaces hook failures with trace report context [253.92ms]
+(pass) validateProject > localizes forced hook failure to a canonical graph node [552.40ms]
+(pass) validateProject > maps MCP server trace event to the canonical MCP node [1020.64ms]
+
+tests/factory-claude-package.test.ts:
+(pass) Claude harness-maker package generation > generated Claude package includes plugin.json, skills, hooks, scripts, and state contract [3.46ms]
+(pass) Claude harness-maker package generation > plugin manifest references only files that exist inside package root [3.14ms]
+(pass) Claude harness-maker package generation > all generated hook scripts can run with Phase D fixture stdin in a temp install root [2432.19ms]
+(pass) Claude harness-maker package generation > skills contain required frontmatter and top-level orchestration instructions [4.12ms]
+
+tests/bin-entry.test.ts:
+(pass) published-style bin entrypoints > bunx resolves the linked oh-my-openharness bin through symlinks [1543.69ms]
+(pass) published-style bin entrypoints > bunx resolves the linked harness-editor bin through symlinks [719.10ms]
+
+tests/factory-reference.test.ts:
+(pass) Harness Factory reference pattern registry > contains the first six seeded reference patterns with provenance [0.14ms]
+(pass) Harness Factory reference pattern registry > retrieves capability-matched patterns with source provenance [0.11ms]
+(pass) Harness Factory reference pattern registry > maps matches into compact state selections [0.05ms]
+(pass) Harness Factory reference pattern registry > builds deterministic interview questions from reference matches [0.10ms]
+(pass) Harness Factory reference pattern registry > falls through to the next reference question when a top decision is already confirmed [0.03ms]
+(pass) Harness Factory reference pattern registry > skips already-open or answered reference questions from selected patterns [0.01ms]
+(pass) Harness Factory reference pattern registry > round-trips stable reference question ids [0.04ms]
+
+tests/phase0-verification.test.ts:
+(pass) Phase 0 verification coverage > CLI new creates a working harness skeleton and adds a permission gate for risky prompts [0.26ms]
+(pass) Phase 0 verification coverage > compileClaude writes a valid Claude package with required surfaces and optional MCP config [2.46ms]
+(pass) Phase 0 verification coverage > generated projects validate in isolated sandbox with structured trace output and no manual edits [1019.50ms]
+(pass) Phase 0 verification coverage > trace reports surface failure context for a GUI consumer [247.92ms]
+
+tests/project-model.test.ts:
+(pass) canonical harness project model > writes Phase 0 project shape with separate semantic graph and layout [4.47ms]
+(pass) canonical harness project model > uses one authoritative registry for generated blocks and composite patterns [0.21ms]
+
+tests/author-security.test.ts:
+(pass) authoring security guards > writeHarnessProject rejects skill paths that escape the project skills directory [3.43ms]
+(pass) authoring security guards > loadHarnessProject rejects skill index entries that escape the project skills directory [3.96ms]
+(pass) authoring security guards > writeHarnessProject rejects skill paths that escape through a symlinked directory [4.10ms]
+(pass) authoring security guards > loadHarnessProject rejects skill index entries that traverse a symlinked directory [5.01ms]
+
+tests/gui-shell-contract.test.ts:
+(pass) GUI shell contract: loading canonical project data > loadHarnessProject exposes a renderable graph (nodes, edges, layout) for a viewer [2.62ms]
+(pass) GUI shell contract: loading canonical project data > layout-only changes do not mutate the semantic graph (GUI drag-and-drop safety) [4.24ms]
+(pass) GUI shell contract: loading canonical project data > viewer HTML exposes editor controls or bootstraps the React editor shell [6.93ms]
+(pass) GUI shell contract: runtime trace and error surfaces > sandbox trace events carry every field a GUI trace panel needs to render rows [1025.57ms]
+(pass) GUI shell contract: runtime trace and error surfaces > forced failure exposes an error event the GUI can highlight [189.43ms]
+(pass) GUI shell contract: runtime trace and error surfaces > project persistence records a graph hash the trace layer can compare against [4.06ms]
+(pass) GUI shell contract: runtime trace and error surfaces > renderTraceHtml escapes user-controlled trace data (GUI XSS guard) [0.08ms]
+(pass) GUI shell contract: Phase 0 CLI/compiler/sandbox loop still works > new -> load -> compile -> sandbox round-trips without manual edits [982.56ms]
+
+tests/import-seed-security.test.ts:
+(pass) import seed manifest path security > rejects an absolute runtimeRoot path [0.71ms]
+(pass) import seed manifest path security > rejects a parent-escaping runtimeRoot path [0.28ms]
+(pass) import seed manifest path security > rejects an absolute runtimeBundleManifestPath path [0.25ms]
+(pass) import seed manifest path security > rejects a parent-escaping runtimeBundleManifestPath path [0.27ms]
+(pass) import seed manifest path security > rejects a symlinked runtimeRoot that points outside the bundle root [0.68ms]
+(pass) import seed manifest path security > rejects a symlinked runtimeBundleManifestPath that points outside the bundle root [0.97ms]
+
+tests/server-auth.test.ts:
+(pass) oh-my-openharness server mutation auth > generates an API token for mutating requests [5.40ms]
+(pass) oh-my-openharness server mutation auth > rejects mutations without an API token [5.45ms]
+(pass) oh-my-openharness server mutation auth > rejects mutations with the wrong API token [6.70ms]
+(pass) oh-my-openharness server mutation auth > rejects cross-origin browser writes even with a valid API token [5.03ms]
+(pass) oh-my-openharness server mutation auth > accepts same-origin browser writes with a valid API token [9.16ms]
+
+tests/runtime-validation.test.ts:
+(pass) runtime-backed trace validation helpers > derives expected trace coverage from the canonical project graph [0.11ms]
+(pass) runtime-backed trace validation helpers > reports schema violations and missing runtime proof coverage
+(pass) runtime-backed trace validation helpers > trace schema preserves debugger-required failure and MCP event types [0.12ms]
+
+tests/compiler-escaping.test.ts:
+(pass) runtime script escaping > scriptForHook safely serializes quoted project names, ids, and labels into generated JS [206.25ms]
+(pass) runtime script escaping > mcpServerScript safely serializes quoted project names and ids into generated JS [236.52ms]
+
+tests/factory-interview.test.ts:
+(pass) Harness Factory interview engine > selects one focused reference-backed question at a time [0.63ms]
+(pass) Harness Factory interview engine > applies an answer by shrinking open questions and accumulating decisions [1.65ms]
+(pass) Harness Factory interview engine > detects runtime and capabilities from answers before drafting [0.73ms]
+(pass) Harness Factory interview engine > reaches readiness after all capability questions are answered [6.87ms]
+(pass) Harness Factory interview engine > round-trips answered interview state through the file store [2.45ms]
+(pass) Harness Factory interview engine > routes future hook prompts through a pure Phase D seam [0.64ms]
+
+tests/live-debugger.test.ts:
+(pass) Live sandbox debugger trace reducer > trace event reducer marks ok nodes active and error nodes failed [4.47ms]
+(pass) Live sandbox debugger trace reducer > edge highlighting follows consecutive graph events [4.11ms]
+(pass) Live sandbox debugger trace reducer > MCP server trace events map to the canonical MCP node [3.26ms]
+(pass) Live sandbox debugger trace reducer > stale trace warning clears after a matching graph hash payload arrives [3.37ms]
+(pass) Live sandbox debugger trace reducer > polling fallback keeps refreshing trace after stream failure [2.54ms]
+(pass) Live sandbox debugger stream and rerun API > trace stream emits existing trace events before waiting for appends [11.33ms]
+(pass) Live sandbox debugger stream and rerun API > appending a trace event sends one live update without manual refresh [83.57ms]
+(pass) Live sandbox debugger stream and rerun API > trace stream disconnect cleanup removes stream clients [34.22ms]
+(pass) Live sandbox debugger stream and rerun API > bounded rerun rewrites trace with current graph hash and clears stale warning [1826.99ms]
+(pass) Live sandbox debugger stream and rerun API > real Claude proof reports a blocker by default instead of claiming synthetic replay is enough [6.90ms]
+(pass) Live sandbox debugger failure localization from sandbox output > forced sandbox failure localizes the failing canonical graph node [388.79ms]
+
+tests/factory-hooks.test.ts:
+(pass) Harness Factory runtime hooks > parseHookStdin accepts valid JSON and preserves raw payload preview [0.53ms]
+(pass) Harness Factory runtime hooks > parseHookStdin returns structured error for invalid JSON without crashing
+(pass) Harness Factory runtime hooks > SessionStart loads Factory state and emits next recommendation [1.56ms]
+(pass) Harness Factory runtime hooks > UserPromptSubmit routes to ask-question when target runtime/capability decisions are missing [0.80ms]
+(pass) Harness Factory runtime hooks > UserPromptSubmit routes to build only when isReadyToDraft is true and user asks to build [9.84ms]
+(pass) Harness Factory runtime hooks > UserPromptSubmit does not mark export safe before a project exists [9.12ms]
+(pass) Harness Factory runtime hooks > PostToolUse ignores unrecognized generic path responses [1.17ms]
+(pass) Harness Factory runtime hooks > PreToolUse blocks unsafe/out-of-order canonical project writes before Factory readiness [1.49ms]
+(pass) Harness Factory runtime hooks > PostToolUse persists projectPath and stage when a recognized project materialization result is observed [0.69ms]
+(pass) Harness Factory runtime hooks > handleFactoryHookStdin returns deterministic host-valid JSON stdout for fixtures [10.64ms]
+(pass) Harness Factory runtime hooks > fixture coverage exercises every required factory hook fixture [0.49ms]
+
+tests/factory-state.test.ts:
+(pass) Harness Factory state schema/store > creates the minimum persistent factory state shape
+(pass) Harness Factory state schema/store > round-trips state through the file store and validates updates [1.08ms]
+(pass) Harness Factory state schema/store > rejects invalid runtime and unsafe session ids [0.65ms]
+
+tests/server.test.ts:
+(pass) oh-my-openharness local server > serves the canonical project over GET /api/project [7.62ms]
+(pass) oh-my-openharness local server > serves the viewer HTML at / [5.89ms]
+(pass) oh-my-openharness local server > serves catalog, compatibility, and empty Factory state API payloads [7.57ms]
+(pass) oh-my-openharness local server > reports no trace when sandbox has not run [6.95ms]
+(pass) oh-my-openharness local server > reports server health separately from project payloads [6.25ms]
+(pass) oh-my-openharness local server > reads trace events produced by sandbox runs [12.59ms]
+(pass) oh-my-openharness local server > marks trace payload stale when graph hash no longer matches the canonical project [6.22ms]
+(pass) oh-my-openharness local server > localizes trace failures for debugger panels [9.32ms]
+(pass) oh-my-openharness local server > compatibility API reports runtime-scoped custom block compatibility without registry drift [6.21ms]
+(pass) oh-my-openharness local server > persists layout updates without mutating other files [6.64ms]
+(pass) oh-my-openharness local server > mutates the canonical graph through the editor endpoint [12.85ms]
+(pass) oh-my-openharness local server > updates skill markdown through the inspector endpoint [8.44ms]
+(pass) oh-my-openharness local server > Factory chat endpoint routes prompts into interview state [7.59ms]
+(pass) oh-my-openharness local server > editor mutations preserve confirmed gates and host-authored guidance [13.72ms]
+(pass) oh-my-openharness local server > rejects malformed layout payloads [5.71ms]
+(pass) oh-my-openharness local server > returns 404 for unknown routes [8.42ms]
+
+tests/runtime-setup.test.ts:
+(pass) runtime setup core > applySetupPlan enforces summary approval before writes [4.09ms]
+
+tests/multi-runtime-roundtrip.test.ts:
+(pass) multi-runtime compatibility and roundtrip proof > compatibility matrix reports supported entries for each runtime and built-in block kind [0.19ms]
+(pass) multi-runtime compatibility and roundtrip proof > export refuses runtime-incompatible CustomBlock nodes before writing bundle artifacts [2.92ms]
+(pass) multi-runtime compatibility and roundtrip proof > roundtrips claude-code through compile export and import with supported semantics [8.48ms]
+(pass) multi-runtime compatibility and roundtrip proof > roundtrips opencode through compile export and import with supported semantics [8.33ms]
+(pass) multi-runtime compatibility and roundtrip proof > roundtrips codex through compile export and import with supported semantics [8.44ms]
+
+tests/project.test.ts:
+(pass) project persistence > writes extensible runtime/composite metadata and reloads it [2.94ms]
+(pass) project persistence > loads legacy project shape and derives runtime intents [2.21ms]
+
+tests/cli.test.ts:
+(pass) CLI entrypoint > starts the OMOH setup flow without requiring a subcommand in non-interactive mode [155.47ms]
+(pass) CLI entrypoint > blocks risky generation unless confirmation is provided [124.42ms]
+(pass) CLI entrypoint > new persists the selected runtime target before writing the project [122.56ms]
+(pass) CLI entrypoint > export aliases compile and writes a runtime-specific export manifest [136.58ms]
+(pass) CLI entrypoint > export rejects unresolved confirmations the same way compile does [327.11ms]
+(pass) CLI entrypoint > export manifests stay relative and relocated bundles still import successfully [384.81ms]
+(pass) CLI entrypoint > import seeds a canonical project from a runtime bundle [433.49ms]
+(pass) CLI entrypoint > setup applies the Claude runtime through one approval gate [180.59ms]
+(pass) CLI entrypoint > setup dry-run reports the Claude harness-maker package plan without writes [176.98ms]
+(pass) CLI entrypoint > setup supports multi-select planning with one summary approval gate [181.28ms]
+(pass) CLI entrypoint > doctor separates install-shape from host-readiness [359.73ms]
+(pass) CLI entrypoint > OpenCode setup installs a host-native authoring bridge and doctor reports host verification guidance [251.75ms]
+(pass) CLI entrypoint > Codex setup installs a host-native authoring bridge and doctor reports host verification guidance [246.47ms]
+(pass) CLI entrypoint > author applies host-authored graph deltas and preserves configured runtime roots for claude [605.15ms]
+(pass) CLI entrypoint > author applies host-authored graph deltas and preserves configured runtime roots for opencode [599.60ms]
+(pass) CLI entrypoint > author applies host-authored graph deltas and preserves configured runtime roots for codex [598.06ms]
+
+tests/factory-phase-a-b-contract.test.ts:
+(pass) Harness Factory Phase A+B contract > CLI still advertises the stable substrate commands during the additive factory slice [137.17ms]
+(pass) Harness Factory Phase A+B contract > non-factory source files do not import the factory namespace outside approved setup bridges [4.02ms]
+(pass) Harness Factory Phase A+B contract > Phase B registry contract is documented now and activates automatically once the registry exists [0.92ms]
+
+tests/generator.test.ts:
+(pass) generateHarnessProject > adds MCP and permission related nodes from prompt keywords [0.15ms]
+(pass) generateHarnessProject > flags risky permission changes for confirmation
+(pass) generateHarnessProject > persists the selected runtime target before writing runtime-specific artifacts [0.10ms]
+(pass) generateHarnessProject > writes canonical project structure with semantic/layout separation and registry snapshot [1.95ms]
+(pass) generateHarnessProject > captures authoring decisions from prompt cues while preserving the richer baseline flow [0.05ms]
+
+tests/factory-integration.test.ts:
+(pass) Harness Factory minimal vertical integration > turns factory state and reference patterns into a canonical project through substrate adapters [5.96ms]
+(pass) Harness Factory minimal vertical integration > drives intent through interview answers before materializing and compiling a canonical project [15.20ms]
+(pass) Harness Factory minimal vertical integration > orchestrates factory state through draft build and compile using canonical project files [16.65ms]
+(pass) Harness Factory minimal vertical integration > orchestrates build then verify with sandbox pass [853.92ms]
+(pass) Harness Factory minimal vertical integration > orchestrates verify failure and export while preserving canonical project state [260.99ms]
+
+ 159 pass
+ 0 fail
+ 1578 expect() calls
+Ran 159 tests across 30 files. [25.28s]

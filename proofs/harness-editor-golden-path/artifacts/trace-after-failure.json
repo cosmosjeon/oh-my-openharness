@@ -1,0 +1,147 @@
+{
+  "status": 200,
+  "body": {
+    "source": "trace-file",
+    "path": "/var/folders/jw/0r1g06hd4091ny863gpv0vs00000gn/T/harness-editor-golden-path-lif9Ew/golden-path-project/sandbox/trace.jsonl",
+    "events": [
+      {
+        "timestamp": "2026-04-26T09:59:11.122Z",
+        "eventType": "hook-activation",
+        "hook": "SessionStart",
+        "nodeId": "sessionstart-1",
+        "status": "ok",
+        "message": "golden-path-project:SessionStart",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"session\":\"sandbox-start\"}"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:11.364Z",
+        "eventType": "hook-activation",
+        "hook": "UserPromptSubmit",
+        "nodeId": "userpromptsubmit-3",
+        "status": "ok",
+        "message": "golden-path-project:UserPromptSubmit",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:11.364Z",
+        "eventType": "hook-activation",
+        "hook": "UserPromptSubmit",
+        "nodeId": "main-skill",
+        "status": "ok",
+        "message": "Skill activated: Generate Harness Skeleton",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}",
+          "nodeKind": "Skill"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:11.364Z",
+        "eventType": "branch-selection",
+        "hook": "UserPromptSubmit",
+        "nodeId": "permission-gate",
+        "status": "ok",
+        "message": "Permission gate requires approval before risky changes",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}",
+          "branch": "approval_required",
+          "nodeKind": "Permission"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:11.364Z",
+        "eventType": "loop-iteration",
+        "hook": "UserPromptSubmit",
+        "nodeId": "review-loop",
+        "status": "ok",
+        "message": "Loop entered for representative sandbox replay",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}",
+          "iteration": 1,
+          "nodeKind": "Loop"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:11.364Z",
+        "eventType": "custom-block",
+        "hook": "UserPromptSubmit",
+        "nodeId": "custom-block",
+        "status": "ok",
+        "message": "Custom runtime block ready for downstream compilers",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}",
+          "nodeKind": "CustomBlock"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:11.365Z",
+        "eventType": "failure",
+        "hook": "UserPromptSubmit",
+        "nodeId": "userpromptsubmit-3",
+        "status": "error",
+        "message": "Forced sandbox failure for trace/error surfacing",
+        "metadata": {
+          "graphHash": "c42fb9f21881f58a",
+          "runtime": "claude-code",
+          "payloadPreview": "{\"prompt\":\"sandbox prompt\",\"forceFailure\":true}"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:11.367Z",
+        "eventType": "failure",
+        "hook": "UserPromptSubmit",
+        "nodeId": "userpromptsubmit-3",
+        "status": "error",
+        "message": "Hook command failed for UserPromptSubmit",
+        "metadata": {
+          "details": "Forced sandbox failure for trace/error surfacing",
+          "runtime": "claude-code",
+          "graphHash": "c42fb9f21881f58a"
+        }
+      },
+      {
+        "timestamp": "2026-04-26T09:59:11.369Z",
+        "eventType": "failure",
+        "hook": "Sandbox",
+        "nodeId": "trace-validation",
+        "status": "error",
+        "message": "Sandbox trace validation failed",
+        "metadata": {
+          "runtime": "claude-code",
+          "graphHash": "c42fb9f21881f58a",
+          "details": "missing event types: state-transition, mcp-server"
+        }
+      }
+    ],
+    "failure": {
+      "hook": "UserPromptSubmit",
+      "nodeId": "userpromptsubmit-3",
+      "eventType": "failure",
+      "message": "Hook command failed for UserPromptSubmit",
+      "metadata": {
+        "details": "Forced sandbox failure for trace/error surfacing",
+        "runtime": "claude-code",
+        "graphHash": "c42fb9f21881f58a"
+      },
+      "likelyAction": "Inspect the UserPromptSubmit hook/runtime node, apply a bounded fix, then rerun sandbox verification."
+    },
+    "expectedGraphHash": "c42fb9f21881f58a",
+    "observedGraphHash": "c42fb9f21881f58a",
+    "staleTrace": false
+  }
+}
